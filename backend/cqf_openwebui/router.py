@@ -3,6 +3,7 @@
 Cong khai (khung chat tren website khach, kiem Origin trong allowed_origins):
     GET  /webchat/widget.js          ma nhung; chatbot tat -> file rong
     POST /webchat/chat               {"vid", "text", "page"} -> {"reply"}
+    POST /webchat/stream             cung dau vao, tra su kien SSE (status, delta, replace, done)
 Quan tri (dang nhap Open WebUI, vai tro admin; dung get_admin_user cua Open WebUI):
     GET/POST /settings               cai dat (bat/tat, thong tin shop, khung chat, LLM, so lan tra toi thieu...)
     GET /kb, GET /kb/note, POST /kb/note, POST /kb/toggle, DELETE /kb/note, POST /kb/upload, GET /kb/search
@@ -13,7 +14,7 @@ from collections import defaultdict, deque
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from open_webui.utils.auth import get_admin_user
 
 from . import kb, store
@@ -76,15 +77,14 @@ async def widget(request: Request):
     s = store.load(parts()["home"])
     if not s["enabled"]:
         return Response("/* chatbot dang tat */", media_type="application/javascript", headers={"Cache-Control": "no-cache"})
-    conf = {**s["widget"], "api": "/api/v1/cqf/webchat"}
+    conf = {**s["widget"], "shop": s["business"].get("ten") or "", "api": "/api/v1/cqf/webchat"}
     js = (STATIC / "widget.js").read_text(encoding="utf-8").replace("__WEBCHAT_CONFIG__", json.dumps(conf, ensure_ascii=False))
     return Response(js, media_type="application/javascript", headers={"Cache-Control": "public, max-age=120"})
 
 
-@router.post("/webchat/chat")
-async def chat(request: Request):
-    p = parts()
-    s = store.load(p["home"])
+async def _chat_input(request: Request):
+    """Kiem tra chung cho /chat va /stream. Tra (settings, conv, text, page) hoac JSONResponse loi."""
+    s = store.load(parts()["home"])
     headers = {"Cache-Control": "no-store"}
     if not _origin_ok(request, s):
         return JSONResponse({"ok": False, "error": "origin"}, 403, headers)
@@ -101,9 +101,31 @@ async def chat(request: Request):
         return JSONResponse({"ok": False, "error": "qua dai"}, 413, headers)
     if not _rate_ok(vid, RATE_VID) or not _rate_ok("ip:" + _ip(request), RATE_IP):
         return JSONResponse({"ok": False, "error": "rate"}, 429, headers)
-    page = str(body.get("page") or "")[:300] or None
-    reply = await p["engine"].answer(s, f"web:{vid}", text, page)
-    return JSONResponse({"ok": True, "reply": reply}, 200, headers)
+    return s, f"web:{vid}", text, str(body.get("page") or "")[:300] or None
+
+
+@router.post("/webchat/chat")
+async def chat(request: Request):
+    got = await _chat_input(request)
+    if isinstance(got, Response):
+        return got
+    reply = await parts()["engine"].answer(*got)
+    return JSONResponse({"ok": True, "reply": reply}, 200, {"Cache-Control": "no-store"})
+
+
+@router.post("/webchat/stream")
+async def chat_stream(request: Request):
+    """Su kien SSE: status (buoc tra kien thuc...), delta (doan chu da qua kiem so lieu), replace, done."""
+    got = await _chat_input(request)
+    if isinstance(got, Response):
+        return got
+
+    async def events():
+        async for ev in parts()["engine"].stream(*got):
+            yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(events(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
 
 
 # ---------------------------------------------------------------- cai dat
@@ -241,6 +263,15 @@ async def inbox_action(request: Request, user=Depends(get_admin_user)):
     ok = parts()["inbox"].action(str(b.get("conv", "")), str(b.get("action", "")), user.name)
     if not ok:
         raise HTTPException(400, detail="action")
+    return {"ok": True}
+
+
+@router.post("/inbox/profile")
+async def inbox_profile(request: Request, user=Depends(get_admin_user)):
+    """Chu shop sua ten / SDT / Zalo / nhu cau cua khach tren Hop thu."""
+    b = await request.json()
+    if not parts()["inbox"].update_profile(str(b.get("conv", "")), b.get("profile") or {}, user.name):
+        raise HTTPException(404, detail="not_found")
     return {"ok": True}
 
 

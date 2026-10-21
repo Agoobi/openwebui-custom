@@ -20,8 +20,45 @@
 	const EVENT = {
 		lead: ['Khách để lại thông tin', ''], handoff: ['Khách cần gặp nhân viên', ''],
 		guard_blocked: ['Bot không trả lời được', 'bad'], da_goi: ['Đã gọi', 'acc'], xong: ['Xong', 'acc'],
-		mo_lai: ['Mở lại', 'acc']
+		mo_lai: ['Mở lại', 'acc'], sua_thong_tin: ['Sửa thông tin khách', 'acc']
 	};
+	const EDIT_FIELDS = [['ten', 'Tên'], ['sdt', 'SĐT'], ['zalo', 'Zalo'], ['email', 'Email'], ['nhu_cau', 'Nhu cầu']];
+
+	// Markdown cua bot (danh sach, bang, dam, link): escape truoc roi moi dinh dang
+	const escHtml = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+	const mdInline = (s) => escHtml(s)
+		.replace(/`([^`]+)`/g, '<code>$1</code>')
+		.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+		.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+	function mdBlock(text) {
+		const out = [];
+		let list = null, para = [], table = null;
+		const fp = () => { if (para.length) { out.push(`<p>${para.map(mdInline).join('<br>')}</p>`); para = []; } };
+		const fl = () => { if (list) { out.push(`<${list.t}>${list.i.map((x) => `<li>${mdInline(x)}</li>`).join('')}</${list.t}>`); list = null; } };
+		const ft = () => {
+			if (!table) return;
+			const rows = table.filter((r) => !/^\s*\|?\s*:?-{2,}/.test(r)).map((r) => r.replace(/^\s*\||\|\s*$/g, '').split('|').map((c) => mdInline(c.trim())));
+			out.push(`<div class="tw"><table><tr>${rows[0].map((c) => `<th>${c}</th>`).join('')}</tr>${rows.slice(1).map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join('')}</tr>`).join('')}</table></div>`);
+			table = null;
+		};
+		for (const line of String(text).split('\n')) {
+			const st = line.trim();
+			let m;
+			if (!st) { fp(); fl(); ft(); continue; }
+			if (st.startsWith('|')) { fp(); fl(); (table ||= []).push(st); continue; }
+			if ((m = st.match(/^([-*+•]|\d+[.)])\s+(.*)$/))) {
+				fp(); ft();
+				const t = /\d/.test(m[1]) ? 'ol' : 'ul';
+				if (list && list.t !== t) fl();
+				(list ||= { t, i: [] }).i.push(m[2]);
+				continue;
+			}
+			if ((m = st.match(/^#{1,6}\s+(.*)$/))) { fp(); fl(); ft(); out.push(`<p><strong>${mdInline(m[1])}</strong></p>`); continue; }
+			fl(); ft(); para.push(st);
+		}
+		fp(); fl(); ft();
+		return out.join('');
+	}
 	const EVENT_FIELDS = [
 		...[['ten', 'Tên'], ['sdt', 'SĐT'], ['zalo', 'Zalo'], ['email', 'Email'], ['cong_ty', 'Công ty'],
 			['dia_chi', 'Địa chỉ'], ['thoi_gian', 'Giờ tiện gọi'], ['nhu_cau', 'Nhu cầu']],
@@ -216,6 +253,49 @@
 		}
 	}
 
+	function editForm(it, kv) {
+		kv.dataset.editing = it.conv;
+		kv.replaceChildren();
+		const form = el('form', 'editform');
+		const inputs = {};
+		for (const [k, l] of EDIT_FIELDS) {
+			const lab = el('label');
+			lab.append(el('span', '', l));
+			const inp = el(k === 'nhu_cau' ? 'textarea' : 'input');
+			inp.value = (it.profile || {})[k] || '';
+			inp.id = `edit-${k}`;
+			if (k === 'sdt' || k === 'zalo') inp.inputMode = 'tel';
+			inputs[k] = inp;
+			lab.append(inp);
+			form.append(lab);
+		}
+		const row = el('div', 'editbtns');
+		const ok = el('button', 'btn primary small', 'Lưu');
+		ok.type = 'submit';
+		const cancel = el('button', 'btn small', 'Huỷ');
+		cancel.type = 'button';
+		cancel.addEventListener('click', () => { state.editing = null; renderDetail(); });
+		row.append(ok, cancel);
+		form.append(row);
+		form.addEventListener('submit', async (e) => {
+			e.preventDefault();
+			ok.disabled = true;
+			try {
+				const profile = Object.fromEntries(EDIT_FIELDS.map(([k]) => [k, inputs[k].value.trim()]));
+				await api('/inbox/profile', { method: 'POST', body: JSON.stringify({ conv: it.conv, profile }) });
+				state.editing = null;
+				toast('Đã lưu thông tin khách');
+				await tick(true);
+			} catch (err) {
+				if (err.auth) return authFail();
+				toast('Không lưu được. Thử lại.');
+				ok.disabled = false;
+			}
+		});
+		kv.append(form);
+		inputs.ten.focus();
+	}
+
 	function noteText(note) {
 		if (!note || typeof note !== 'object') return note ? String(note) : '';
 		return `${ACTION_LABEL[note.action] || note.action} lúc ${clock(note.t)}${note.by ? ' · ' + note.by : ''}`;
@@ -251,20 +331,28 @@
 		});
 
 		const kv = $('kv');
-		kv.replaceChildren();
 		const pr = it.profile || {};
-		const rows = PROFILE.filter(([k]) => pr[k]).map(([k, l]) => [l, pr[k], k]);
-		if (!rows.length) rows.push(['Liên hệ', 'Khách chưa để lại thông tin']);
-		for (const [l, v, k] of rows) {
-			const d = el('div');
-			const dd = el('dd', k === 'sdt' || k === 'zalo' ? 'num' : '', v);
-			if (k === 'sdt' || k === 'zalo') {
-				const c = el('button', 'copy', 'Chép');
-				c.addEventListener('click', () => copy(v));
-				dd.append(c);
+		if (state.editing === it.conv) {
+			if (kv.dataset.editing !== it.conv) editForm(it, kv); // dang sua: khong ve lai moi lan lam moi
+		} else {
+			kv.dataset.editing = '';
+			kv.replaceChildren();
+			const rows = PROFILE.filter(([k]) => pr[k]).map(([k, l]) => [l, pr[k], k]);
+			if (!rows.length) rows.push(['Liên hệ', 'Khách chưa để lại thông tin']);
+			for (const [l, v, k] of rows) {
+				const d = el('div');
+				const dd = el('dd', k === 'sdt' || k === 'zalo' ? 'num' : '', v);
+				if (k === 'sdt' || k === 'zalo') {
+					const c = el('button', 'copy', 'Chép');
+					c.addEventListener('click', () => copy(v));
+					dd.append(c);
+				}
+				d.append(el('dt', '', l), dd);
+				kv.append(d);
 			}
-			d.append(el('dt', '', l), dd);
-			kv.append(d);
+			const edit = el('button', 'btn small', 'Sửa thông tin');
+			edit.addEventListener('click', () => { state.editing = it.conv; renderDetail(); });
+			kv.append(edit);
 		}
 		const kv2 = $('kv2');
 		kv2.replaceChildren();
@@ -290,7 +378,10 @@
 			if (m.role === 'event') { th.append(eventNode(m)); continue; }
 			const who = m.role === 'user' ? 'Khách' : 'Chatbot';
 			const box = el('div', `msg ${m.role === 'user' ? 'in' : 'out'}`);
-			box.append(el('span', 'meta', `${who} · ${ts ? new Date(ts * 1000).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : ''}`), el('div', 'text', String(m.text || '')));
+			const body = el('div', m.role === 'user' ? 'text' : 'text md');
+			if (m.role === 'user') body.textContent = String(m.text || '');
+			else body.innerHTML = mdBlock(m.text || ''); // escape truoc trong mdBlock
+			box.append(el('span', 'meta', `${who} · ${ts ? new Date(ts * 1000).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : ''}`), body);
 			th.append(box);
 		}
 		if (atBottom || th.dataset.conv !== it.conv) th.scrollTop = th.scrollHeight;

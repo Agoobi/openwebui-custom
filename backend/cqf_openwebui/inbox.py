@@ -70,6 +70,29 @@ class Inbox:
             self._save(idx)
         return True
 
+    def update_profile(self, conv, fields, by=""):
+        """Sua thong tin khach (ten, sdt, zalo, nhu_cau...). by = nguoi sua tren Hop thu (ghi su kien); rong = khach tu
+        noi (bot nhan ra), chi cap nhat. Tra False neu khong co khach. Gia tri rong = xoa truong do."""
+        with self.lock:
+            idx = self._load()
+            if conv not in idx:
+                return False
+            st = idx[conv]
+            changed = {}
+            for k in PROFILE:
+                if k in fields:
+                    v = str(fields[k] or "").strip()[:200]
+                    if v != st["profile"].get(k, ""):
+                        changed[k] = v
+                        if v:
+                            st["profile"][k] = v
+                        else:
+                            st["profile"].pop(k, None)
+            if changed and by:
+                self._append(idx, conv, st, {"role": "event", "kind": "sua_thong_tin", "data": {**changed, "by": by}})
+            self._save(idx)
+        return True
+
     def _safe(self, fn, *args):
         try:
             with self.lock:
