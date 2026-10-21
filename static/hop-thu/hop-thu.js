@@ -11,7 +11,7 @@
 		dang_chat: ['Đang chat', 'c-acc'],
 		da_xong: ['Đã xong', 'c-ok']
 	};
-	const ACTIONS = { can_xu_ly: ['da_goi', 'xong'], dang_chat: ['xong'], da_xong: ['mo_lai'] };
+	const ACTIONS = { can_xu_ly: ['xong'], dang_chat: ['xong'], da_xong: ['mo_lai'] };
 	const ACTION_LABEL = { da_goi: 'Đã gọi', xong: 'Xong', mo_lai: 'Mở lại' };
 	const PROFILE = [
 		['ten', 'Tên'], ['sdt', 'SĐT'], ['zalo', 'Zalo'], ['email', 'Email'], ['cong_ty', 'Công ty'],
