@@ -152,7 +152,8 @@
 	function visible() {
 		const items = state.index?.items || [];
 		const q = state.q.trim().toLowerCase();
-		let rows = items.filter((it) => (state.tab === 'all' || it.status === state.tab) && (!state.channel || it.kenh === state.channel));
+		// "Tat ca" = moi khach CHUA xong; khach da xong chi hien o tab "Da xong"
+		let rows = items.filter((it) => (state.tab === 'all' ? it.status !== 'da_xong' : it.status === state.tab) && (!state.channel || it.kenh === state.channel));
 		if (q) {
 			rows = rows.filter((it) => [nameOf(it), it.title, it.last_text, it.first_q, ...Object.values(it.profile || {})]
 				.some((v) => String(v || '').toLowerCase().includes(q)));
@@ -189,7 +190,8 @@
 			const row1 = el('div', 'row1');
 			row1.append(el('span', 'name', nameOf(it)), el('span', 'when', ago(it.last_at)));
 			const who = it.last_role === 'assistant' ? 'Bot: ' : '';
-			const snippet = el('div', 'snippet', who + (it.last_text || it.first_q || 'Khách mới nhắn'));
+			const plain = String(it.last_text || it.first_q || 'Khách mới nhắn').replace(/\*\*|__|`|^#+\s*|\|/gm, '').replace(/\s+/g, ' ');
+			const snippet = el('div', 'snippet', who + plain);
 			const chips = el('div', 'chips');
 			const [label, cls] = STATUS[it.status] || [it.status, 'c-muted'];
 			chips.append(el('span', `chip ${cls}`, label));
@@ -211,9 +213,12 @@
 		$('listEmpty').hidden = !empty;
 		ul.hidden = empty;
 		if (empty) {
-			$('listEmptyText').textContent = items.length
-				? 'Không có khách nào khớp bộ lọc.'
-				: 'Chưa có cuộc trò chuyện. Khách nhắn qua khung chat trên website sẽ hiện ở đây.';
+			const filtered = state.q.trim() || state.channel;
+			$('listEmptyText').textContent = !items.length
+				? 'Chưa có cuộc trò chuyện. Khách nhắn qua khung chat trên website sẽ hiện ở đây.'
+				: filtered ? 'Không có khách nào khớp bộ lọc.'
+				: state.tab === 'all' ? 'Không còn khách nào đang chờ. Khách đã xong nằm ở tab Đã xong.'
+				: 'Không có khách nào ở mục này.';
 		}
 	}
 
