@@ -1,0 +1,70 @@
+/*
+ * Open WebUI custom CSS (Agoobi). Open WebUI tu nap file nay tren moi trang (/static/custom.css).
+ * Chi trinh bay hop thu chatbot: nhom folder, chat Tong quan, the nhung. Khong doi, khong che ten / logo
+ * "Open WebUI" (giay phep cam khi qua 50 nguoi dung). Bam vao cau truc cua Open WebUI 0.11.4: nang ban thi kiem lai.
+ */
+:root {
+	--cqf-warn: #b45309;
+	--cqf-acc: #0e7466;
+	--cqf-ok: #157f3d;
+	--cqf-ink3: #86928d;
+}
+.dark {
+	--cqf-warn: #f0a24b;
+	--cqf-acc: #3cc2ae;
+	--cqf-ok: #5ccb83;
+	--cqf-ink3: #75827d;
+}
+
+/* 3 folder cua hop thu: nhan nho viet hoa, cham mau theo trang thai */
+[data-cqf='can-xu-ly'],
+[data-cqf='dang-chat'],
+[data-cqf='da-xong'] {
+	position: relative;
+}
+[data-cqf='can-xu-ly'] .truncate,
+[data-cqf='dang-chat'] .truncate,
+[data-cqf='da-xong'] .truncate {
+	font-size: 0.6875rem;
+	font-weight: 600;
+	letter-spacing: 0.1em;
+	text-transform: uppercase;
+	color: var(--cqf-ink3);
+}
+[data-cqf='can-xu-ly'] .truncate::before,
+[data-cqf='dang-chat'] .truncate::before,
+[data-cqf='da-xong'] .truncate::before {
+	content: '';
+	display: inline-block;
+	width: 0.4375rem;
+	height: 0.4375rem;
+	margin-right: 0.4rem;
+	border-radius: 50%;
+	vertical-align: 0.05em;
+	background: var(--cqf-ink3);
+}
+[data-cqf='can-xu-ly'] .truncate::before {
+	background: var(--cqf-warn);
+}
+[data-cqf='dang-chat'] .truncate::before {
+	background: var(--cqf-acc);
+}
+[data-cqf='da-xong'] .truncate::before {
+	background: var(--cqf-ok);
+}
+/* folder "Can xu ly" con tin chua doc: so dem mau cam cho noi bat (title cua so dem doi theo ngon ngu) */
+[data-cqf='can-xu-ly'] .min-w-4.rounded-md {
+	background: var(--cqf-warn);
+	color: #fff;
+}
+
+/* chat ghim Tong quan: dam hon, co vach trai */
+[data-cqf='tong-quan'] {
+	font-weight: 600;
+	box-shadow: inset 2px 0 0 var(--cqf-acc);
+}
+
+/* the nhung (HTML trong tin nhan) vua khung chat, khong bo goc lon */
+[id$='-embeds-container'] iframe {
+	border-radius: 6px;
+}
