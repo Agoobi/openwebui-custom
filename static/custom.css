@@ -40,9 +40,9 @@
 .dark #cqf-inbox-frame {
 	background: #171717;
 }
-#sidebar-cqf-inbox-button.cqf-active {
+[id^="sidebar-cqf-"].cqf-active {
 	background: rgba(0, 0, 0, 0.035);
 }
-.dark #sidebar-cqf-inbox-button.cqf-active {
+.dark [id^="sidebar-cqf-"].cqf-active {
 	background: rgba(255, 255, 255, 0.045);
 }

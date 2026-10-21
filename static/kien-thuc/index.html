@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kiến thức · Open WebUI</title>
+<link rel="icon" href="/static/favicon.png">
+<link rel="stylesheet" href="/static/cqf/ui.css?v=2">
+<!-- Kien thuc cua chatbot (kieu Obsidian): ghi chu Markdown, tai file len, xem / sua, bat tat, lien ket [[...]],
+     thu tim nhu bot. Backend: /api/v1/cqf/kb* (cqf_openwebui, chi quan tri vien). -->
+<style>
+html, body { height: 100%; }
+body { display: flex; flex-direction: column; }
+.vault { flex: 1; min-height: 0; display: grid; grid-template-columns: 270px minmax(0, 1fr) 290px; }
+.pane { min-height: 0; display: flex; flex-direction: column; }
+.files { border-right: 1px solid var(--line); background: var(--surface); }
+.files-head { padding: 16px 14px 10px; display: flex; flex-direction: column; gap: 10px; }
+.files-head h1 { margin: 0; font-size: 20px; font-weight: 700; }
+.files-actions { display: flex; gap: 6px; }
+.files-actions .btn { flex: 1; justify-content: center; }
+.tree { flex: 1; overflow-y: auto; padding: 4px 8px 12px; }
+.group { margin-top: 10px; }
+.group > .eyebrow { padding: 4px 8px; display: flex; justify-content: space-between; }
+.note-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: var(--r); cursor: pointer; font-size: 13.5px; color: var(--ink-2); min-width: 0; border: 0; background: none; width: 100%; text-align: left; }
+.note-row:hover { background: var(--raised); color: var(--ink); }
+.note-row[aria-current="true"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.note-row .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.note-row.off .t { text-decoration: line-through; opacity: .6; }
+.dot { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--ok); }
+.note-row.off .dot { background: var(--line-strong); }
+.warn-ico { color: var(--warn); font-size: 12px; }
+.dropzone { margin: 8px; border: 1.5px dashed var(--line-strong); border-radius: var(--r-lg); padding: 14px; text-align: center; color: var(--ink-3); font-size: 12.5px; }
+body.dragging .dropzone { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+
+.editor { background: var(--bg); }
+.toolbar { display: flex; align-items: center; gap: 8px; padding: 10px 20px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.toolbar .back { display: none; }
+.seg { display: inline-flex; background: var(--raised); border-radius: var(--r); padding: 2px; }
+.seg button { border: 0; background: none; padding: 5px 12px; border-radius: 6px; font-size: 13px; color: var(--ink-2); }
+.seg button[aria-pressed="true"] { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.toolbar .spacer { flex: 1; }
+.doc { flex: 1; overflow-y: auto; }
+.doc-inner { max-width: 760px; margin: 0 auto; padding: 24px 28px 64px; }
+.title-input { width: 100%; border: 0; background: none; font-size: 28px; font-weight: 700; letter-spacing: -0.01em; padding: 0; outline: none; color: var(--ink); }
+.meta { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0 18px; align-items: center; }
+.md { font-size: 15px; line-height: 1.7; overflow-wrap: anywhere; }
+.md h1, .md h2, .md h3, .md h4 { line-height: 1.3; margin: 1.4em 0 .5em; }
+.md h1 { font-size: 22px; } .md h2 { font-size: 19px; } .md h3 { font-size: 16.5px; } .md h4 { font-size: 15px; }
+.md p { margin: .6em 0; }
+.md ul, .md ol { padding-left: 1.4em; margin: .4em 0; }
+.md li { margin: .2em 0; }
+.md code { font-family: var(--mono); font-size: .88em; background: var(--raised); padding: 1px 5px; border-radius: 4px; }
+.md pre { background: var(--raised); padding: 12px; border-radius: var(--r); overflow-x: auto; }
+.md pre code { background: none; padding: 0; }
+.md blockquote { margin: .6em 0; padding: 2px 14px; border-left: 3px solid var(--line-strong); color: var(--ink-2); }
+.md table { border-collapse: collapse; margin: .8em 0; display: block; overflow-x: auto; }
+.md th, .md td { border: 1px solid var(--line); padding: 5px 9px; text-align: left; }
+.md a.wl { color: var(--accent); text-decoration: none; border-bottom: 1px dashed currentColor; cursor: pointer; }
+.md a.wl.missing { color: var(--ink-3); }
+.md hr { border: 0; border-top: 1px solid var(--line); margin: 1.2em 0; }
+.source-md { margin-top: 18px; border-top: 1px dashed var(--line-strong); padding-top: 12px; }
+textarea.src { width: 100%; min-height: calc(100vh - 230px); border: 1px solid var(--line); border-radius: var(--r); padding: 14px; background: var(--surface); font: 13.5px/1.6 var(--mono); resize: vertical; outline: none; }
+textarea.src:focus { border-color: var(--accent); }
+
+.side { border-left: 1px solid var(--line); background: var(--surface); overflow-y: auto; padding: 16px; gap: 20px; }
+.side section { display: flex; flex-direction: column; gap: 8px; }
+.side ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.side li button { border: 0; background: none; padding: 3px 6px; border-radius: 6px; text-align: left; color: var(--ink-2); font-size: 13px; width: 100%; }
+.side li button:hover { background: var(--raised); color: var(--ink); }
+.warnbox { border: 1px solid var(--warn-soft); background: var(--warn-soft); color: var(--warn); border-radius: var(--r); padding: 8px 10px; font-size: 12.5px; }
+.hit { border: 1px solid var(--line); border-radius: var(--r); padding: 8px 10px; font-size: 12.5px; color: var(--ink-2); cursor: pointer; background: var(--surface); text-align: left; width: 100%; }
+.hit b { color: var(--ink); display: block; font-size: 12.5px; }
+.hit:hover { border-color: var(--accent); }
+.qlist { font-size: 12px; color: var(--ink-3); display: flex; flex-direction: column; gap: 2px; }
+.qlist span::before { content: "→ "; }
+
+@media (max-width: 1060px) { .vault { grid-template-columns: 240px minmax(0, 1fr); } .side { display: none; } }
+@media (min-width: 1061px) and (max-width: 1280px) { .vault { grid-template-columns: 240px minmax(0, 1fr) 260px; } }
+@media (max-width: 760px) {
+  .vault { grid-template-columns: minmax(0, 1fr); }
+  .vault.open .files { display: none; }
+  .vault:not(.open) .editor { display: none; }
+  .toolbar .back { display: inline-grid; }
+  .doc-inner { padding: 16px; }
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <a class="icon-btn" href="/" data-cqf-home title="Về Open WebUI" aria-label="Về Open WebUI">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/></svg>
+  </a>
+  <nav class="crumb" aria-label="Vị trí"><a href="/">Open WebUI</a><span aria-hidden="true">›</span><b>Kiến thức</b></nav>
+</header>
+
+<main class="vault" id="vault">
+  <aside class="pane files" aria-label="Ghi chú">
+    <div class="files-head">
+      <h1>Kiến thức</h1>
+      <div class="files-actions">
+        <button class="btn primary" id="uploadBtn" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg>Tải file lên</button>
+        <button class="btn" id="newBtn" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Ghi chú</button>
+      </div>
+      <input type="file" id="fileInput" multiple accept=".docx,.xlsx,.csv,.pdf,.md,.txt" hidden>
+      <input class="input" id="filter" type="search" placeholder="Lọc ghi chú…" aria-label="Lọc ghi chú">
+    </div>
+    <nav class="tree" id="tree" aria-label="Danh sách ghi chú"></nav>
+    <div class="dropzone">Kéo file Word, Excel, CSV, PDF, TXT vào đây để thêm kiến thức</div>
+  </aside>
+
+  <section class="pane editor" aria-label="Nội dung">
+    <div class="toolbar" id="toolbar" hidden>
+      <button class="icon-btn back" id="back" aria-label="Về danh sách"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button>
+      <div class="seg" role="group" aria-label="Chế độ">
+        <button type="button" id="modeView" aria-pressed="true">Xem</button>
+        <button type="button" id="modeEdit" aria-pressed="false">Sửa</button>
+      </div>
+      <label class="switch"><input type="checkbox" id="noteOn"><span class="track"></span><span class="hint">Bot dùng ghi chú này</span></label>
+      <span class="spacer"></span>
+      <span class="hint" id="saveState"></span>
+      <button class="btn primary" id="saveNote" type="button" hidden>Lưu</button>
+      <button class="btn danger" id="delNote" type="button">Xoá</button>
+    </div>
+    <div class="doc" id="doc">
+      <div class="empty" id="docEmpty">
+        <h2>Chọn hoặc tạo một ghi chú</h2>
+        <p>Mỗi ghi chú là một trang kiến thức bot được tra. Tải file bảng giá, chính sách, giới thiệu sản phẩm lên, hoặc tự viết. Dùng <code>[[tên ghi chú]]</code> để liên kết các ghi chú với nhau.</p>
+      </div>
+      <div class="doc-inner" id="docInner" hidden>
+        <input class="title-input" id="noteTitle" aria-label="Tiêu đề ghi chú">
+        <div class="meta" id="noteMeta"></div>
+        <div class="md" id="preview"></div>
+        <textarea class="src" id="source" hidden spellcheck="false" aria-label="Nội dung Markdown"></textarea>
+        <div class="source-md" id="origBox" hidden><span class="eyebrow">Bản gốc từ file</span><div class="md" id="orig"></div></div>
+      </div>
+    </div>
+  </section>
+
+  <aside class="pane side" aria-label="Thông tin ghi chú">
+    <section><span class="eyebrow">Thử tìm như bot</span>
+      <form id="searchForm"><input class="input" id="q" type="search" placeholder="Khách hỏi gì?" aria-label="Câu hỏi thử"></form>
+      <div id="searchOut"></div>
+    </section>
+    <section id="secWarn" hidden><span class="eyebrow">Cảnh báo số liệu</span><div class="warnbox" id="warnText"></div></section>
+    <section id="secToc" hidden><span class="eyebrow">Mục lục</span><ul id="toc"></ul></section>
+    <section id="secBack" hidden><span class="eyebrow">Ghi chú trỏ tới đây</span><ul id="backlinks"></ul></section>
+    <section id="secSrc" hidden><span class="eyebrow">Nguồn</span><div class="hint" id="srcInfo"></div><button class="btn" id="toggleOrig" type="button">Xem bản gốc</button></section>
+  </aside>
+</main>
+
+<script src="/static/cqf/ui.js?v=2"></script>
+<script src="/static/kien-thuc/kien-thuc.js?v=2"></script>
+</body>
+</html>

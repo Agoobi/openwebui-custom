@@ -1,1 +1,3 @@
 static/hop-thu/config.json
+__pycache__/
+*.pyc

@@ -1,7 +1,6 @@
 /*
- * Trang Hop thu (xem index.html). Du lieu nam o Hermes (skill chatbot-tu-van, inbox.py), doc qua
- * <api>/inbox/api/* voi token dang nhap Open WebUI; <api> lay tu config.json canh file nay (install.sh ghi).
- * Moi chu cua khach dua vao trang bang textContent.
+ * Trang Hop thu (xem index.html). Du lieu o backend cqf_openwebui chay trong Open WebUI: /api/v1/cqf/inbox/*,
+ * dang nhap bang token Open WebUI (localStorage.token). Moi chu cua khach dua vao trang bang textContent.
  */
 (() => {
 	'use strict';
@@ -31,7 +30,7 @@
 	];
 
 	const $ = (id) => document.getElementById(id);
-	const state = { index: null, apiBase: null, tab: 'all', q: '', channel: '', sort: 'new', selected: null, chat: null, chatAt: 0 };
+	const state = { index: null, tab: 'all', q: '', channel: '', sort: 'new', selected: null, chat: null, chatAt: 0 };
 	const seen = load('cqf-inbox-seen', {});
 
 	function load(key, fallback) {
@@ -59,21 +58,16 @@
 
 	// ------------------------------------------------------------ API
 	async function api(path, opts = {}) {
-		if (!state.apiBase) {
-			const cfg = await fetch('/static/hop-thu/config.json', { cache: 'no-store' }).then((r) => (r.ok ? r.json() : {}));
-			if (!cfg.api) throw Object.assign(new Error('config'), { config: true });
-			state.apiBase = String(cfg.api).replace(/\/$/, '');
-		}
 		const token = localStorage.getItem('token');
 		if (!token) throw Object.assign(new Error('auth'), { auth: true });
-		const res = await fetch(state.apiBase + path, { ...opts, headers: { Authorization: `Bearer ${token}`, ...(opts.body ? { 'Content-Type': 'application/json' } : {}) } });
-		if (res.status === 401) throw Object.assign(new Error('auth'), { auth: true });
+		const res = await fetch('/api/v1/cqf' + path, { ...opts, headers: { Authorization: `Bearer ${token}`, ...(opts.body ? { 'Content-Type': 'application/json' } : {}) } });
+		if (res.status === 401 || res.status === 403) throw Object.assign(new Error('auth'), { auth: true });
 		if (!res.ok) throw new Error(`HTTP ${res.status}`);
 		return res.json();
 	}
 
 	async function loadIndex() {
-		return api('/inbox/api/index');
+		return api('/inbox/index');
 	}
 
 	// ------------------------------------------------------------ dinh dang
@@ -208,7 +202,7 @@
 		const version = `${it.n}:${it.last_at}`; // n tang ca khi co su kien / nut bam (khong doi last_at)
 		if (!force && state.chatAt === version) return;
 		try {
-			const res = await api(`/inbox/api/conv?c=${encodeURIComponent(it.conv)}`);
+			const res = await api(`/inbox/conv?c=${encodeURIComponent(it.conv)}`);
 			if (state.selected !== it.conv) return;
 			state.chat = res.messages || [];
 			state.chatAt = version;
@@ -306,7 +300,7 @@
 	async function act(it, action, box) {
 		box.querySelectorAll('button').forEach((b) => (b.disabled = true));
 		try {
-			await api('/inbox/api/action', { method: 'POST', body: JSON.stringify({ conv: it.conv, action }) });
+			await api('/inbox/action', { method: 'POST', body: JSON.stringify({ conv: it.conv, action }) });
 			toast(`Đã ghi nhận: ${ACTION_LABEL[action]}`);
 			await tick(true);
 		} catch (e) {
