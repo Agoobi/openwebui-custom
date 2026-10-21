@@ -23,3 +23,26 @@
 .cqf-inbox-count[hidden] {
 	display: none;
 }
+
+/* Hop thu mo trong vung noi dung (loader.js): phu phan ben phai sidebar, duoi cac hop thoai cua Open WebUI */
+#cqf-inbox-frame {
+	position: fixed;
+	top: 0;
+	right: 0;
+	bottom: 0;
+	left: 0;
+	width: 100vw;
+	height: 100dvh;
+	border: 0;
+	z-index: 40;
+	background: #fff;
+}
+.dark #cqf-inbox-frame {
+	background: #171717;
+}
+#sidebar-cqf-inbox-button.cqf-active {
+	background: rgba(0, 0, 0, 0.035);
+}
+.dark #sidebar-cqf-inbox-button.cqf-active {
+	background: rgba(255, 255, 255, 0.045);
+}

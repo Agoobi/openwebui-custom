@@ -46,6 +46,17 @@
 	const dark = theme === 'dark' || theme === 'oled-dark' || (theme === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
 	document.documentElement.classList.toggle('dark', dark);
 
+	// Nhung trong Open WebUI (loader.js mo ?embed=1 canh sidebar): nut goc trai mo sidebar cua Open WebUI (dien thoai)
+	const embed = new URLSearchParams(location.search).has('embed') && window.parent !== window;
+	document.documentElement.classList.toggle('embed', embed);
+	const tell = (msg) => { if (embed) window.parent.postMessage(msg, location.origin); };
+	if (embed) {
+		const home = document.getElementById('homeBtn');
+		home.title = 'Mở sidebar';
+		home.setAttribute('aria-label', 'Mở sidebar');
+		home.addEventListener('click', (e) => { e.preventDefault(); tell({ type: 'cqf-toggle-sidebar' }); });
+	}
+
 	// ------------------------------------------------------------ API
 	async function api(path, opts = {}) {
 		if (!state.apiBase) {
@@ -126,6 +137,7 @@
 	function renderList() {
 		const items = state.index?.items || [];
 		const todo = items.filter((it) => it.status === 'can_xu_ly').length;
+		tell({ type: 'cqf-inbox-count', todo });
 		const nTodo = $('nTodo');
 		nTodo.textContent = todo || '';
 		nTodo.className = todo ? 'n hot' : 'n';

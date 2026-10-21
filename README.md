@@ -4,7 +4,7 @@ Trang **Hộp thư** trong Open WebUI cho chatbot website của Hermes (skill `c
 hội thoại và lead ở một màn hình riêng, không phải lục chat hay folder. Không fork Open WebUI: chỉ thêm file tĩnh
 và hai file Open WebUI tự nạp trên mọi trang (`/static/loader.js`, `/static/custom.css`).
 
-- Sidebar có thêm hàng **Hộp thư** (dưới Search) kèm số khách cần xử lý.
+- Sidebar có thêm hàng **Hộp thư** (dưới Search) kèm số khách cần xử lý. Bấm vào thì Hộp thư mở ngay trong vùng nội dung, sidebar giữ nguyên; bấm mục khác thì đóng. Ctrl/Cmd + bấm: mở tab riêng.
 - Trang Hộp thư hai cột như hộp thư email: bên trái danh sách khách (Tất cả / Cần xử lý / Đang chat / Đã xong, lọc
   kênh, tìm, sắp theo mới nhất hoặc chờ lâu nhất); bên phải hội thoại, thẻ sự kiện (khách để lại thông tin, cần
   nhân viên, bot không trả lời được), thông tin khách, nút **Đã gọi / Xong / Mở lại**. Tự làm mới vài giây một
