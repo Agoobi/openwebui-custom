@@ -6,6 +6,10 @@ và `/static/loader.js`.
 
 Chủ shop thấy:
 
+- Trang **Hộp thư** (nút "Hộp thư" trong sidebar, `/static/hop-thu/index.html`): hai cột như hộp thư email. Bên
+  trái là danh sách khách (tab Tất cả / Cần xử lý / Đang chat / Đã xong, lọc kênh, tìm, sắp theo mới nhất hoặc chờ
+  lâu nhất); bên phải là hội thoại, thông tin khách và nút **Đã gọi / Xong / Mở lại**. Tự làm mới 5 giây một lần,
+  dùng phiên đăng nhập Open WebUI sẵn có, chạy được trên điện thoại.
 - Chat ghim **Tổng quan hộp thư**: số liệu hôm nay (hội thoại, lead, cần xử lý, bot bị chặn) và bảng khách; bấm một
   dòng để mở chat của khách đó.
 - 3 folder **Cần xử lý / Đang chat / Đã xong**, chat tự chuyển nhóm, có số chưa đọc.

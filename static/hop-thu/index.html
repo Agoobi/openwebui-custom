@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hộp thư · Open WebUI</title>
+<link rel="icon" href="/static/favicon.png">
+<!--
+  Trang Hop thu cho chatbot website (Hermes, skill chatbot-tu-van). Open WebUI phuc vu file nay o /static/hop-thu/.
+  Cung origin voi Open WebUI nen dung token dang nhap san co (localStorage.token) de doc chat qua API.
+  Du lieu: chat ghim "Tong quan hop thu" co truong cqf_inbox (chi muc do Hermes ghi); bam 1 khach thi tai chat do.
+  Nut Da goi / Xong / Mo lai goi Hermes (action_url, ky HMAC theo tung khach). Hop dong: docs/dong-bo.md.
+-->
+<style>
+:root {
+  --bg: #f4f5f5; --surface: #ffffff; --raised: #f0f2f2; --line: #e2e6e5; --line-strong: #d0d6d4;
+  --ink: #161b1a; --ink-2: #4c5654; --ink-3: #8b9593;
+  --accent: #0e7466; --accent-soft: #e3f2ef; --on-accent: #ffffff;
+  --warn: #b45309; --warn-soft: #fdf1e3; --bad: #b42318; --bad-soft: #fcebea; --ok: #157f3d; --ok-soft: #e6f4ea;
+  --bubble-in: #f0f2f2; --bubble-out: #e3f2ef;
+  --r: 8px; --r-lg: 14px;
+  --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  color-scheme: light;
+}
+:root.dark {
+  --bg: #0f1312; --surface: #171c1b; --raised: #1f2625; --line: #29312f; --line-strong: #364140;
+  --ink: #e7ecea; --ink-2: #a9b4b1; --ink-3: #75817e;
+  --accent: #3cc2ae; --accent-soft: #143a34; --on-accent: #0b1513;
+  --warn: #f0a24b; --warn-soft: #3a2a16; --bad: #f2867d; --bad-soft: #3d1d1b; --ok: #5ccb83; --ok-soft: #173322;
+  --bubble-in: #1f2625; --bubble-out: #143a34;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--ink); font: 14px/1.5 var(--font); display: flex; flex-direction: column; }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+[hidden] { display: none !important; }
+.dview { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+
+/* thanh tren */
+.top { display: flex; align-items: center; gap: 12px; padding: 12px max(16px, env(safe-area-inset-right)) 12px max(16px, env(safe-area-inset-left)); }
+.icon-btn { display: inline-grid; place-items: center; width: 32px; height: 32px; border-radius: var(--r); border: 0; background: transparent; color: var(--ink-2); text-decoration: none; }
+.icon-btn:hover { background: var(--raised); color: var(--ink); }
+.crumb { display: flex; align-items: center; gap: 8px; font-size: 15px; min-width: 0; white-space: nowrap; }
+@media (max-width: 480px) { .live span { display: none; } }
+.crumb a { color: var(--ink-3); text-decoration: none; }
+.crumb a:hover { color: var(--ink); }
+.crumb b { font-weight: 500; }
+.sep { width: 1px; height: 20px; background: var(--line-strong); }
+.top .spacer { flex: 1; }
+.live { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.live i { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
+.live.off i { background: var(--warn); }
+
+/* khung 2 cot */
+.shell { flex: 1; min-height: 0; margin: 0 max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  display: grid; grid-template-columns: minmax(300px, 420px) minmax(0, 1fr); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); overflow: hidden; }
+.list-pane { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--line); }
+.list-head { display: flex; flex-direction: column; gap: 12px; padding: 20px 20px 8px; }
+.list-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.list-title h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
+.tabs { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 2px; padding: 3px; background: var(--raised); border-radius: var(--r); }
+.tab { border: 0; background: transparent; padding: 6px 4px; border-radius: 6px; color: var(--ink-2); font-size: 13px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; white-space: nowrap; }
+.tab[aria-selected="true"] { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.tab .n { font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ink-3); }
+.tab .n.hot { color: var(--on-accent); background: var(--warn); padding: 0 5px; border-radius: 999px; }
+.field { display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: var(--r); padding: 0 10px; background: var(--surface); }
+.field:focus-within { border-color: var(--accent); }
+.field input, .field select { flex: 1; min-width: 0; border: 0; background: transparent; padding: 8px 0; outline: none; }
+.field svg { color: var(--ink-3); flex: none; }
+.sortrow { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-3); padding: 4px 20px 8px; }
+.sortrow button { border: 0; background: none; padding: 0; color: var(--ink-3); }
+.sortrow button[aria-pressed="true"] { color: var(--ink); font-weight: 600; }
+.sortrow .count { margin-left: auto; font-variant-numeric: tabular-nums; }
+
+.items { list-style: none; margin: 0; padding: 0 8px 8px; overflow-y: auto; flex: 1; min-height: 0; }
+.item { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 10px; padding: 10px 12px; border-radius: var(--r); cursor: pointer; position: relative; }
+.item:hover { background: var(--raised); }
+.item[aria-selected="true"] { background: var(--accent-soft); }
+.avatar { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; font-weight: 600; color: var(--ink-2); background: var(--raised); position: relative; }
+.item[aria-selected="true"] .avatar { background: var(--surface); }
+.avatar .ch { position: absolute; right: -2px; bottom: -2px; width: 16px; height: 16px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: #fff; border: 2px solid var(--surface); }
+.avatar .ch svg { width: 9px; height: 9px; }
+.row1 { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.name { font-weight: 500; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item.unread .name { font-weight: 700; }
+.when { margin-left: auto; font-size: 12px; color: var(--ink-3); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.snippet { font-size: 13px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item.unread .snippet { color: var(--ink); }
+.chips { display: flex; gap: 6px; margin-top: 4px; flex-wrap: wrap; }
+.chip { font-size: 11px; font-weight: 600; padding: 0 7px; border-radius: 999px; line-height: 18px; white-space: nowrap; }
+.c-warn { background: var(--warn-soft); color: var(--warn); }
+.c-acc { background: var(--accent-soft); color: var(--accent); }
+.c-ok { background: var(--ok-soft); color: var(--ok); }
+.c-bad { background: var(--bad-soft); color: var(--bad); }
+.c-muted { background: var(--raised); color: var(--ink-2); }
+.dot { position: absolute; right: 12px; bottom: 14px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+
+.empty { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 10px; padding: 48px 24px; color: var(--ink-2); flex: 1; }
+.empty .ico { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; background: var(--raised); color: var(--ink-2); }
+.empty h2 { margin: 4px 0 0; font-size: 16px; font-weight: 600; color: var(--ink); }
+.empty p { margin: 0; max-width: 40ch; }
+.empty a { color: var(--accent); }
+
+/* cot phai */
+.detail { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.d-head { display: flex; align-items: center; gap: 12px; padding: 14px 20px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.d-head .back { display: none; }
+.d-who { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.d-who b { font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.d-who span { font-size: 12.5px; color: var(--ink-3); }
+.d-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.btn { border: 1px solid var(--line-strong); background: var(--surface); padding: 6px 12px; border-radius: var(--r); font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; text-decoration: none; color: var(--ink); }
+.btn:hover { background: var(--raised); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.btn.primary:hover { filter: brightness(1.05); }
+.btn:disabled { opacity: .55; cursor: default; }
+.d-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 280px; }
+.thread { overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+.day { align-self: center; font-size: 11.5px; color: var(--ink-3); padding: 2px 10px; background: var(--raised); border-radius: 999px; margin: 6px 0; }
+.msg { max-width: 72%; display: flex; flex-direction: column; gap: 2px; }
+.msg .meta { font-size: 11.5px; color: var(--ink-3); }
+.msg .text { padding: 8px 12px; border-radius: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.msg.in { align-self: flex-start; }
+.msg.in .text { background: var(--bubble-in); border-top-left-radius: 4px; }
+.msg.out { align-self: flex-end; align-items: flex-end; }
+.msg.out .text { background: var(--bubble-out); border-top-right-radius: 4px; }
+.event { align-self: stretch; border: 1px solid var(--line); border-left: 3px solid var(--warn); border-radius: var(--r); padding: 8px 12px; font-size: 13px; color: var(--ink-2); background: var(--surface); }
+.event.acc { border-left-color: var(--accent); }
+.event.bad { border-left-color: var(--bad); }
+.event b { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--warn); }
+.event.acc b { color: var(--accent); }
+.event.bad b { color: var(--bad); }
+.side { border-left: 1px solid var(--line); overflow-y: auto; padding: 18px; display: flex; flex-direction: column; gap: 16px; min-height: 0; }
+.side h3 { margin: 0; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .1em; color: var(--ink-3); }
+.kv { display: flex; flex-direction: column; gap: 10px; margin: 0; }
+.kv div { display: flex; flex-direction: column; min-width: 0; }
+.kv dt { font-size: 12px; color: var(--ink-3); }
+.kv dd { margin: 0; overflow-wrap: anywhere; }
+.kv dd.num { font-variant-numeric: tabular-nums; }
+.copy { border: 0; background: none; padding: 0 0 0 6px; color: var(--accent); font-size: 12px; }
+.hint { font-size: 12.5px; color: var(--ink-3); }
+.toast { position: fixed; left: 50%; bottom: max(20px, env(safe-area-inset-bottom)); transform: translateX(-50%); background: var(--ink); color: var(--surface); padding: 8px 14px; border-radius: var(--r); font-size: 13px; }
+
+@media (max-width: 1100px) { .d-body { grid-template-columns: minmax(0, 1fr); } .side { border-left: 0; border-top: 1px solid var(--line); max-height: 40%; } }
+@media (max-width: 760px) {
+  .shell { grid-template-columns: minmax(0, 1fr); }
+  .shell.has-detail .list-pane { display: none; }
+  .shell:not(.has-detail) .detail { display: none; }
+  .list-pane { border-right: 0; }
+  .d-head .back { display: inline-grid; }
+  .msg { max-width: 88%; }
+}
+@media (prefers-reduced-motion: no-preference) { .item, .btn, .tab { transition: background-color .1s, color .1s; } }
+</style>
+</head>
+<body>
+<header class="top">
+  <a class="icon-btn" href="/" title="Về Open WebUI" aria-label="Về Open WebUI">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/></svg>
+  </a>
+  <span class="sep" aria-hidden="true"></span>
+  <nav class="crumb" aria-label="Vị trí"><a href="/">Open WebUI</a><span aria-hidden="true">›</span><b>Hộp thư</b></nav>
+  <span class="spacer"></span>
+  <span class="live" id="live" role="status"><i aria-hidden="true"></i><span id="liveText">Đang tải…</span></span>
+</header>
+
+<main class="shell" id="shell">
+  <section class="list-pane" aria-label="Danh sách khách">
+    <div class="list-head">
+      <div class="list-title"><h1>Hộp thư</h1></div>
+      <div class="tabs" role="tablist" aria-label="Trạng thái" id="tabs">
+        <button class="tab" role="tab" data-tab="all" aria-selected="true">Tất cả</button>
+        <button class="tab" role="tab" data-tab="can_xu_ly" aria-selected="false">Cần xử lý <span class="n" id="nTodo"></span></button>
+        <button class="tab" role="tab" data-tab="dang_chat" aria-selected="false">Đang chat</button>
+        <button class="tab" role="tab" data-tab="da_xong" aria-selected="false">Đã xong</button>
+      </div>
+      <label class="field" for="channel">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+        <span class="sr">Kênh</span>
+        <select id="channel"><option value="">Tất cả kênh</option><option value="web">Chat website</option></select>
+      </label>
+      <label class="field" for="q">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <span class="sr">Tìm</span>
+        <input id="q" type="search" placeholder="Tìm tên khách, SĐT, tin nhắn…" autocomplete="off">
+      </label>
+    </div>
+    <div class="sortrow">
+      <button id="sortNew" aria-pressed="true">Mới nhất</button><span aria-hidden="true">·</span><button id="sortWait" aria-pressed="false">Chờ lâu nhất</button>
+      <span class="count" id="count"></span>
+    </div>
+    <ul class="items" id="items" role="listbox" aria-label="Khách"></ul>
+    <div class="empty" id="listEmpty" hidden>
+      <div class="ico" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9a2 2 0 0 1-2 2H6l-4 4V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2z"/><path d="M18 9h2a2 2 0 0 1 2 2v11l-4-4h-6a2 2 0 0 1-2-2v-1"/></svg></div>
+      <p id="listEmptyText">Chưa có cuộc trò chuyện. Khách nhắn qua khung chat trên website sẽ hiện ở đây.</p>
+    </div>
+  </section>
+
+  <section class="detail" id="detail" aria-label="Cuộc trò chuyện">
+    <div class="empty" id="detailEmpty">
+      <div class="ico" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
+      <h2>Chọn một cuộc trò chuyện</h2>
+      <p>Xem tin nhắn của khách trên chat website, thông tin khách để lại, và đánh dấu đã gọi hoặc xong ngay tại đây.</p>
+    </div>
+    <div class="dview" id="detailView" hidden>
+      <div class="d-head">
+        <button class="icon-btn back" id="back" aria-label="Quay lại danh sách"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button>
+        <div class="avatar" id="dAvatar" aria-hidden="true"></div>
+        <div class="d-who"><b id="dName"></b><span id="dSub"></span></div>
+        <div class="d-actions" id="dActions"></div>
+      </div>
+      <div class="d-body">
+        <div class="thread" id="thread" aria-live="polite"></div>
+        <aside class="side" aria-label="Thông tin khách">
+          <h3>Thông tin khách</h3>
+          <dl class="kv" id="kv"></dl>
+          <h3>Hoạt động</h3>
+          <dl class="kv" id="kv2"></dl>
+          <p class="hint">Trả lời trong Open WebUI không gửi tới khách. Gọi lại theo số khách để lại.</p>
+        </aside>
+      </div>
+    </div>
+  </section>
+</main>
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script src="/static/hop-thu/hop-thu.js" defer></script>
+</body>
+</html>

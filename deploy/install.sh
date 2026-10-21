@@ -26,6 +26,8 @@ for dir in "$PKG/static" "$PKG/frontend/static"; do
     [ -f "$dir/$f" ] && [ ! -f "$dir/$f.orig" ] && cp -p "$dir/$f" "$dir/$f.orig"
     install -m 0644 "$SRC/$f" "$dir/$f"
   done
+  install -d -m 0755 "$dir/hop-thu"
+  install -m 0644 "$SRC/hop-thu/"* "$dir/hop-thu/"
   echo "da cai vao $dir"
 done
 
