@@ -1,23 +1,16 @@
 # openwebui-custom
 
-Tùy biến Open WebUI để chủ shop xem **hộp thư chatbot website** (skill `chatbot-tu-van` của Hermes) trực quan, không
-phải đọc từng chat. Không fork Open WebUI: chỉ dùng hai file Open WebUI tự nạp trên mọi trang, `/static/custom.css`
-và `/static/loader.js`.
+Trang **Hộp thư** trong Open WebUI cho chatbot website của Hermes (skill `chatbot-tu-van`): chủ shop xem khách,
+hội thoại và lead ở một màn hình riêng, không phải lục chat hay folder. Không fork Open WebUI: chỉ thêm file tĩnh
+và hai file Open WebUI tự nạp trên mọi trang (`/static/loader.js`, `/static/custom.css`).
 
-Chủ shop thấy:
+- Sidebar có thêm hàng **Hộp thư** (dưới Search) kèm số khách cần xử lý.
+- Trang Hộp thư hai cột như hộp thư email: bên trái danh sách khách (Tất cả / Cần xử lý / Đang chat / Đã xong, lọc
+  kênh, tìm, sắp theo mới nhất hoặc chờ lâu nhất); bên phải hội thoại, thẻ sự kiện (khách để lại thông tin, cần
+  nhân viên, bot không trả lời được), thông tin khách, nút **Đã gọi / Xong / Mở lại**. Tự làm mới vài giây một
+  lần, chạy trên điện thoại, theo chế độ sáng/tối của Open WebUI.
 
-- Trang **Hộp thư** (nút "Hộp thư" trong sidebar, `/static/hop-thu/index.html`): hai cột như hộp thư email. Bên
-  trái là danh sách khách (tab Tất cả / Cần xử lý / Đang chat / Đã xong, lọc kênh, tìm, sắp theo mới nhất hoặc chờ
-  lâu nhất); bên phải là hội thoại, thông tin khách và nút **Đã gọi / Xong / Mở lại**. Tự làm mới 5 giây một lần,
-  dùng phiên đăng nhập Open WebUI sẵn có, chạy được trên điện thoại.
-- Chat ghim **Tổng quan hộp thư**: số liệu hôm nay (hội thoại, lead, cần xử lý, bot bị chặn) và bảng khách; bấm một
-  dòng để mở chat của khách đó.
-- 3 folder **Cần xử lý / Đang chat / Đã xong**, chat tự chuyển nhóm, có số chưa đọc.
-- Mỗi khách 1 chat: thẻ khách ở đầu (tên, SĐT, nhu cầu, trang đang xem, nút **Đã gọi / Xong / Mở lại**), thẻ sự
-  kiện lead ngay trong hội thoại, tin mới hiện ngay không cần tải lại trang.
-
-Dữ liệu và thẻ do Hermes ghi (`owui_inbox.py` trong skill). Repo này lo phần trình bày và mở chat từ bảng tổng quan.
-Hợp đồng giữa hai bên: [docs/dong-bo.md](docs/dong-bo.md).
+Dữ liệu ở Hermes; Hermes không ghi gì vào Open WebUI. Cách hai bên nói chuyện: [docs/dong-bo.md](docs/dong-bo.md).
 
 ## Cài
 
@@ -25,15 +18,18 @@ Open WebUI cài bằng pip + systemd (như trên VPS do Coquifly dựng):
 
 ```bash
 git clone https://github.com/Agoobi/openwebui-custom.git /opt/openwebui-custom
-sudo /opt/openwebui-custom/deploy/install.sh            # mặc định /opt/open-webui/venv, service open-webui
+sudo HERMES_INBOX_URL=https://bot.shop.vn /opt/openwebui-custom/deploy/install.sh
 ```
 
-Chạy lại lệnh này sau mỗi lần nâng cấp Open WebUI (pip ghi đè thư mục static).
+`HERMES_INBOX_URL` là URL https của bot Hermes (plugin webchat). Chạy lại sau mỗi lần nâng cấp Open WebUI (pip ghi đè
+thư mục static); bỏ `HERMES_INBOX_URL` thì giữ cấu hình cũ.
+
+Phía Hermes điền `open_webui.url` và `open_webui.public_url` trong `chatbot/settings.json` (xem skill).
 
 Docker:
 
 ```bash
-docker build -t openwebui-custom .
+docker build --build-arg HERMES_INBOX_URL=https://bot.shop.vn -t openwebui-custom .
 ```
 
 ## Phiên bản

@@ -1,12 +1,12 @@
 /*
- * Trang Hop thu (xem index.html). Doc chi muc cqf_inbox trong chat ghim "Tong quan hop thu" (Hermes ghi),
- * tai chat cua khach khi bam, nut xu ly goi Hermes. Moi chu cua khach dua vao trang bang textContent.
+ * Trang Hop thu (xem index.html). Du lieu nam o Hermes (skill chatbot-tu-van, inbox.py), doc qua
+ * <api>/inbox/api/* voi token dang nhap Open WebUI; <api> lay tu config.json canh file nay (install.sh ghi).
+ * Moi chu cua khach dua vao trang bang textContent.
  */
 (() => {
 	'use strict';
 
-	const OVERVIEW_TITLE = 'Tổng quan hộp thư';
-	const POLL_MS = 5000;
+	const POLL_MS = 4000;
 	const STATUS = {
 		can_xu_ly: ['Cần xử lý', 'c-warn'],
 		dang_chat: ['Đang chat', 'c-acc'],
@@ -23,9 +23,15 @@
 		guard_blocked: ['Bot không trả lời được', 'bad'], da_goi: ['Đã gọi', 'acc'], xong: ['Xong', 'acc'],
 		mo_lai: ['Mở lại', 'acc']
 	};
+	const EVENT_FIELDS = [
+		...[['ten', 'Tên'], ['sdt', 'SĐT'], ['zalo', 'Zalo'], ['email', 'Email'], ['cong_ty', 'Công ty'],
+			['dia_chi', 'Địa chỉ'], ['thoi_gian', 'Giờ tiện gọi'], ['nhu_cau', 'Nhu cầu']],
+		['ly_do', 'Lý do'], ['tom_tat', 'Tóm tắt'], ['lien_he', 'Liên hệ'], ['khach_hoi', 'Khách hỏi'],
+		['so_lieu_khong_co_can_cu', 'Số liệu không có trong tài liệu'], ['by', 'Người bấm']
+	];
 
 	const $ = (id) => document.getElementById(id);
-	const state = { index: null, overviewId: null, tab: 'all', q: '', channel: '', sort: 'new', selected: null, chat: null, chatAt: 0 };
+	const state = { index: null, apiBase: null, tab: 'all', q: '', channel: '', sort: 'new', selected: null, chat: null, chatAt: 0 };
 	const seen = load('cqf-inbox-seen', {});
 
 	function load(key, fallback) {
@@ -42,28 +48,21 @@
 
 	// ------------------------------------------------------------ API
 	async function api(path, opts = {}) {
+		if (!state.apiBase) {
+			const cfg = await fetch('/static/hop-thu/config.json', { cache: 'no-store' }).then((r) => (r.ok ? r.json() : {}));
+			if (!cfg.api) throw Object.assign(new Error('config'), { config: true });
+			state.apiBase = String(cfg.api).replace(/\/$/, '');
+		}
 		const token = localStorage.getItem('token');
 		if (!token) throw Object.assign(new Error('auth'), { auth: true });
-		const res = await fetch(path, { ...opts, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(opts.headers || {}) } });
+		const res = await fetch(state.apiBase + path, { ...opts, headers: { Authorization: `Bearer ${token}`, ...(opts.body ? { 'Content-Type': 'application/json' } : {}) } });
 		if (res.status === 401) throw Object.assign(new Error('auth'), { auth: true });
 		if (!res.ok) throw new Error(`HTTP ${res.status}`);
 		return res.json();
 	}
 
 	async function loadIndex() {
-		if (!state.overviewId) {
-			const pinned = await api('/api/v1/chats/pinned');
-			const hit = pinned.find((c) => c.title === OVERVIEW_TITLE);
-			if (!hit) return null;
-			state.overviewId = hit.id;
-		}
-		try {
-			const res = await api(`/api/v1/chats/${state.overviewId}`);
-			return res.chat?.cqf_inbox || null;
-		} catch (e) {
-			state.overviewId = null; // chat tong quan bi xoa: tim lai lan sau
-			throw e;
-		}
+		return api('/inbox/api/index');
 	}
 
 	// ------------------------------------------------------------ dinh dang
@@ -197,9 +196,9 @@
 		const version = `${it.n}:${it.last_at}`; // n tang ca khi co su kien / nut bam (khong doi last_at)
 		if (!force && state.chatAt === version) return;
 		try {
-			const res = await api(`/api/v1/chats/${it.chat_id}`);
+			const res = await api(`/inbox/api/conv?c=${encodeURIComponent(it.conv)}`);
 			if (state.selected !== it.conv) return;
-			state.chat = res.chat;
+			state.chat = res.messages || [];
 			state.chatAt = version;
 			seen[it.conv] = Math.max(seen[it.conv] || 0, it.last_user_at || 0);
 			save('cqf-inbox-seen', seen);
@@ -211,18 +210,19 @@
 		}
 	}
 
-	function messages(chat) {
-		const hist = chat?.history;
-		if (!hist?.messages) return chat?.messages || [];
-		const out = [];
-		let cur = hist.currentId;
-		const guard = new Set();
-		while (cur && hist.messages[cur] && !guard.has(cur)) {
-			guard.add(cur);
-			out.push(hist.messages[cur]);
-			cur = hist.messages[cur].parentId;
-		}
-		return out.reverse();
+	function noteText(note) {
+		if (!note || typeof note !== 'object') return note ? String(note) : '';
+		return `${ACTION_LABEL[note.action] || note.action} lúc ${clock(note.t)}${note.by ? ' · ' + note.by : ''}`;
+	}
+
+	function eventNode(m) {
+		const [label, tone] = EVENT[m.kind] || [m.kind, ''];
+		const ev = el('div', `event ${tone}`);
+		ev.append(el('b', '', `${label} · ${new Date(m.t * 1000).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`));
+		const d = m.data || {};
+		const parts = EVENT_FIELDS.filter(([k]) => d[k]).map(([k, l]) => `${l}: ${Array.isArray(d[k]) ? d[k].join(', ') : d[k]}`);
+		if (parts.length) ev.append(document.createTextNode(parts.join(' · ')));
+		return ev;
 	}
 
 	function renderDetail() {
@@ -233,7 +233,8 @@
 		avatar(it, $('dAvatar'));
 		$('dName').textContent = nameOf(it);
 		const [label] = STATUS[it.status] || [it.status];
-		$('dSub').textContent = `Chat website · ${label}${it.note ? ' · ' + it.note : ''}`;
+		const note = noteText(it.note);
+		$('dSub').textContent = `Chat website · ${label}${note ? ' · ' + note : ''}`;
 
 		const acts = $('dActions');
 		acts.replaceChildren();
@@ -242,9 +243,6 @@
 			b.addEventListener('click', () => act(it, a, acts));
 			acts.append(b);
 		});
-		const open = el('a', 'btn', 'Mở trong Open WebUI');
-		open.href = `/c/${encodeURIComponent(it.chat_id)}`;
-		acts.append(open);
 
 		const kv = $('kv');
 		kv.replaceChildren();
@@ -279,40 +277,28 @@
 			return;
 		}
 		let lastDay = '';
-		messages(state.chat).forEach((m, i) => {
-			const text = String(m.content || '');
-			if (i === 0 && m.role === 'assistant' && text.startsWith('Thẻ khách')) return; // the khach: da co o cot phai
-			const ts = m.timestamp || 0;
+		for (const m of state.chat) {
+			const ts = m.t || 0;
 			const day = ts ? new Date(ts * 1000).toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit' }) : '';
 			if (day && day !== lastDay) { th.append(el('span', 'day', day)); lastDay = day; }
-			if (m.role === 'assistant' && (text.startsWith('🔔') || text.startsWith('Chủ shop bấm:'))) {
-				const isAction = text.startsWith('Chủ shop bấm:');
-				const ev = el('div', `event ${isAction ? 'acc' : text.includes('không trả lời được') ? 'bad' : ''}`);
-				const [head, ...rest] = text.replace(/^🔔\s*/, '').split(' — ');
-				ev.append(el('b', '', head), document.createTextNode(rest.join(' — ')));
-				th.append(ev);
-				return;
-			}
+			if (m.role === 'event') { th.append(eventNode(m)); continue; }
 			const who = m.role === 'user' ? 'Khách' : 'Chatbot';
 			const box = el('div', `msg ${m.role === 'user' ? 'in' : 'out'}`);
-			box.append(el('span', 'meta', `${who} · ${ts ? new Date(ts * 1000).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : ''}`), el('div', 'text', text));
+			box.append(el('span', 'meta', `${who} · ${ts ? new Date(ts * 1000).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : ''}`), el('div', 'text', String(m.text || '')));
 			th.append(box);
-		});
-		if (atBottom || !th.dataset.conv || th.dataset.conv !== it.conv) th.scrollTop = th.scrollHeight;
+		}
+		if (atBottom || th.dataset.conv !== it.conv) th.scrollTop = th.scrollHeight;
 		th.dataset.conv = it.conv;
 	}
 
 	async function act(it, action, box) {
-		const url = state.index?.action_url;
-		if (!url) return toast('Chưa cấu hình webchat.public_url bên Hermes nên chưa bấm được.');
 		box.querySelectorAll('button').forEach((b) => (b.disabled = true));
 		try {
-			const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify({ conv: it.conv, sig: it.sig, action }) });
-			if (!res.ok) throw new Error(res.status);
+			await api('/inbox/api/action', { method: 'POST', body: JSON.stringify({ conv: it.conv, action }) });
 			toast(`Đã ghi nhận: ${ACTION_LABEL[action]}`);
-			setTimeout(tick, 2500); // Hermes ghi xong chi muc sau ~2 giay
-			setTimeout(tick, 5000);
-		} catch {
+			await tick(true);
+		} catch (e) {
+			if (e.auth) return authFail();
 			toast('Không gửi được tới Hermes. Thử lại.');
 			box.querySelectorAll('button').forEach((b) => (b.disabled = false));
 		}
@@ -338,28 +324,30 @@
 		live(false, 'Chưa đăng nhập');
 		$('items').replaceChildren();
 		$('listEmpty').hidden = false;
-		$('listEmptyText').innerHTML = 'Bạn cần <a href="/auth">đăng nhập Open WebUI</a> rồi mở lại trang này.';
+		$('listEmptyText').innerHTML = 'Cần <a href="/auth">đăng nhập Open WebUI</a> bằng tài khoản được xem Hộp thư (mặc định: quản trị viên) rồi mở lại trang này.';
+	}
+
+	function configFail() {
+		live(false, 'Chưa cấu hình');
+		$('items').replaceChildren();
+		$('listEmpty').hidden = false;
+		$('listEmptyText').textContent = 'Chưa biết địa chỉ Hermes: cài lại openwebui-custom với HERMES_INBOX_URL.';
 	}
 
 	// ------------------------------------------------------------ vong lap
 	let busy = false;
-	async function tick() {
-		if (busy || document.hidden) return;
+	async function tick(now) {
+		if (busy || (document.hidden && !now)) return;
 		busy = true;
 		try {
-			const idx = await loadIndex();
-			if (!idx) {
-				state.index = { items: [] };
-				live(true, 'Chưa có dữ liệu từ chatbot');
-			} else {
-				state.index = idx;
-				live(true, `Cập nhật ${new Date().toLocaleTimeString('vi-VN')}`);
-			}
+			state.index = await loadIndex();
+			live(true, `Cập nhật ${new Date().toLocaleTimeString('vi-VN')}`);
 			renderList();
 			if (state.selected) { renderDetail(); await refreshChat(false); }
 		} catch (e) {
 			if (e.auth) authFail();
-			else live(false, 'Mất kết nối, đang thử lại…');
+			else if (e.config) configFail();
+			else live(false, 'Mất kết nối tới Hermes, đang thử lại…');
 		} finally {
 			busy = false;
 		}
@@ -394,5 +382,5 @@
 
 	const fromHash = decodeURIComponent(location.hash.slice(1));
 	tick().then(() => { if (fromHash && current() == null && (state.index?.items || []).some((it) => it.conv === fromHash)) select(fromHash); });
-	setInterval(tick, POLL_MS);
+	setInterval(() => tick(), POLL_MS);
 })();

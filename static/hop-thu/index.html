@@ -6,10 +6,10 @@
 <title>Hộp thư · Open WebUI</title>
 <link rel="icon" href="/static/favicon.png">
 <!--
-  Trang Hop thu cho chatbot website (Hermes, skill chatbot-tu-van). Open WebUI phuc vu file nay o /static/hop-thu/.
-  Cung origin voi Open WebUI nen dung token dang nhap san co (localStorage.token) de doc chat qua API.
-  Du lieu: chat ghim "Tong quan hop thu" co truong cqf_inbox (chi muc do Hermes ghi); bam 1 khach thi tai chat do.
-  Nut Da goi / Xong / Mo lai goi Hermes (action_url, ky HMAC theo tung khach). Hop dong: docs/dong-bo.md.
+  Trang Hop thu cho chatbot website (Hermes, skill chatbot-tu-van). Open WebUI phuc vu file nay o
+  /static/hop-thu/index.html; cung origin nen lay duoc token dang nhap Open WebUI (localStorage.token).
+  Du lieu nam o Hermes: <api>/inbox/api/* (api trong config.json), Hermes hoi Open WebUI token cua ai.
+  Khong doc / ghi chat nao cua Open WebUI. Hop dong: docs/dong-bo.md.
 -->
 <style>
 :root {
@@ -220,7 +220,7 @@ button { cursor: pointer; }
           <dl class="kv" id="kv"></dl>
           <h3>Hoạt động</h3>
           <dl class="kv" id="kv2"></dl>
-          <p class="hint">Trả lời trong Open WebUI không gửi tới khách. Gọi lại theo số khách để lại.</p>
+          <p class="hint">Chưa trả lời khách từ đây được: gọi lại theo số khách để lại.</p>
         </aside>
       </div>
     </div>
