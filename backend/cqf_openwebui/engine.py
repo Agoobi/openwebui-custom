@@ -88,6 +88,29 @@ def rules(s):
             f"Liên hệ chính thức: {contact or 'chưa có'}.")
 
 
+TEXT_CALL_START = "<｜"
+TEXT_INVOKE = re.compile(r"<｜DSML｜\s*invoke\s+name=\"([^\"]+)\"\s*>(.*?)</｜DSML｜\s*invoke\s*>", re.S)
+TEXT_PARAM = re.compile(r"<｜DSML｜\s*parameter\s+name=\"([^\"]+)\"([^>]*)>(.*?)</｜DSML｜\s*parameter\s*>", re.S)
+
+
+def text_tool_calls(text):
+    """Tool call model viet thanh chu (kieu DeepSeek DSML) -> tool_calls chuan OpenAI. Khong doc duoc: []."""
+    calls = []
+    for i, (name, inner) in enumerate(TEXT_INVOKE.findall(text)):
+        args = {}
+        for key, attrs, value in TEXT_PARAM.findall(inner):
+            value = value.strip()
+            if 'string="true"' not in attrs:
+                try:
+                    value = json.loads(value)
+                except ValueError:
+                    pass
+            args[key] = value
+        calls.append({"id": f"text_call_{i}", "type": "function",
+                      "function": {"name": name.strip(), "arguments": json.dumps(args, ensure_ascii=False)}})
+    return calls
+
+
 def passages_text(hits):
     return "\n\n---\n\n".join(f"[{h['source']}#{h['chunk']}] {h['title']}\n{h['text']}" for h in hits)
 
@@ -249,7 +272,7 @@ class Engine:
                     yield {"type": "delta", "text": part}
                 if blocked:
                     break
-            if calls and not guard.sent and not blocked:
+            if calls and not blocked:  # ke ca khi da noi cau dem ("Dạ em kiểm tra ạ."): tra xong noi tiep
                 messages.append({"role": "assistant", "content": guard.text or "",
                                  "tool_calls": [calls[i] for i in sorted(calls)]})
                 for c in (calls[i] for i in sorted(calls)):
@@ -318,7 +341,7 @@ class Engine:
         if llm.get("api_key"):
             headers["Authorization"] = f"Bearer {llm['api_key']}"
         url = llm["base_url"].rstrip("/") + "/chat/completions"
-        calls = {}
+        calls, held, carry = {}, None, ""  # held: chu tu "<｜" tro di, co the la tool call model viet thanh chu
         async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=120, sock_read=60)) as http:
             async with http.post(url, json=body, headers=headers) as r:
                 if r.status != 200:
@@ -341,7 +364,25 @@ class Engine:
                         c["function"]["name"] += fn.get("name") or ""
                         c["function"]["arguments"] += fn.get("arguments") or ""
                     if delta.get("content"):
-                        yield "text", delta["content"]
+                        if held is not None:
+                            held += delta["content"]
+                            continue
+                        t, carry = carry + delta["content"], ""
+                        cut = t.find(TEXT_CALL_START)
+                        if cut >= 0:
+                            held, t = t[cut:], t[:cut]
+                        elif t.endswith("<"):  # "<｜" co the bi cat giua 2 goi
+                            carry, t = "<", t[:-1]
+                        if t:
+                            yield "text", t
+        if held is not None:  # DeepSeek doi khi viet tool call thanh chu (<｜DSML｜invoke ...>): doi lai thanh tool call
+            parsed = text_tool_calls(held) if tools else []  # vong cuoi khong co tool: bo phan do
+            for c in parsed:
+                calls[len(calls)] = c
+            if not parsed and "DSML" not in held:
+                yield "text", held
+        elif carry:
+            yield "text", carry
         if calls:
             for i, c in calls.items():
                 c["id"] = c["id"] or f"call_{i}"
