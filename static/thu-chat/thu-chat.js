@@ -290,7 +290,7 @@
 
 	(async () => {
 		try {
-			const s = await api('/settings');
+			const { settings: s } = await api('/settings');
 			const chip = $('botState');
 			if (!s.llm?.base_url || !s.llm?.model) { chip.className = 'chip c-bad'; chip.textContent = 'Chưa cấu hình LLM (trang Chatbot)'; }
 			else if (s.enabled) { chip.className = 'chip c-ok'; chip.textContent = 'Đang bật trên website'; }

@@ -266,6 +266,10 @@ class Engine:
         rounds = int(s.get("max_tool_rounds") or 0)
         for round_no in range(rounds + 1):
             tools = None if round_no == rounds else TOOLS
+            if tools is None and round_no:  # het luot tool: model hay van "goi" tool bang chu roi khong tra loi gi
+                messages.append({"role": "system", "content": (
+                    "Hết lượt tra cứu. Trả lời khách NGAY bằng thông tin đã tìm được ở trên, không gọi công cụ, không viết "
+                    "thẻ công cụ. Phần nào tài liệu chưa có thì nói rõ là chưa có thông tin phần đó.")})
             guard = _SentenceGuard("\n".join(evidence) + "\n" + biz, "\n".join(user_texts))
             calls, blocked = {}, None
             if round_no == 0:
