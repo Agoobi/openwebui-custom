@@ -522,15 +522,21 @@ def chunk(text):
         if not para or para.startswith("<!--"):
             continue
         if para.startswith("#"):
-            heading = para.lstrip("# ").strip()
+            heading = para.lstrip("# ").strip().split("\n")[0][:120]
         if cur and len(cur) + len(para) > CHUNK_CHARS:
             chunks.append(cur)
             cur = (f"[{heading}]\n" if heading and not para.startswith("#") else "")
         cur = (cur + "\n\n" + para).strip()
-        while len(cur) > CHUNK_CHARS * 2:  # doan qua dai (bang lon): cat theo dong
-            cut = cur.rfind("\n", 0, CHUNK_CHARS) or CHUNK_CHARS
+        head = f"[{heading}]\n" if heading else ""
+        while len(cur) > CHUNK_CHARS * 2:  # doan qua dai (bang lon): cat theo dong, dong qua dai thi theo khoang trang
+            # cat phai nam SAU tieu de dau doan, neu khong doan con lai y nguyen -> lap vo han
+            cut = cur.rfind("\n", len(head) + 1, CHUNK_CHARS)
+            if cut <= len(head):
+                cut = cur.rfind(" ", len(head) + 1, CHUNK_CHARS)
+            if cut <= len(head):
+                cut = CHUNK_CHARS
             chunks.append(cur[:cut])
-            cur = (f"[{heading}]\n" if heading else "") + cur[cut:].strip()
+            cur = head + cur[cut:].strip()
     if cur:
         chunks.append(cur)
     return chunks
