@@ -7,7 +7,7 @@ from pathlib import Path
 
 DEFAULTS = {
     "enabled": False,  # tat: widget.js khong hien gi, /chat tra 503
-    "business": {"ten": "", "hotline": "", "zalo": "", "gio_lam_viec": "", "website": "", "dia_chi": ""},
+    "business": {"ten": "", "hotline": "", "zalo": "", "email": "", "gio_lam_viec": "", "website": "", "dia_chi": ""},
     "widget": {"title": "Tư vấn", "color": "#0e7466",
                "greeting": "Xin chào! Em có thể giúp gì cho anh/chị ạ?"},
     "allowed_origins": [],  # website duoc gan khung chat (du ca www)

@@ -74,7 +74,8 @@ section.card > .body { padding: 14px 18px 18px; display: grid; grid-template-col
     <div class="body">
       <label class="field"><span>Tên doanh nghiệp</span><input id="b_ten" autocomplete="organization"></label>
       <label class="field"><span>Hotline</span><input id="b_hotline" inputmode="tel"></label>
-      <label class="field"><span>Số Zalo</span><input id="b_zalo" inputmode="tel"></label>
+      <label class="field"><span>Zalo (số hoặc link OA)</span><input id="b_zalo"></label>
+      <label class="field"><span>Email</span><input id="b_email" type="email" autocomplete="email"></label>
       <label class="field"><span>Giờ làm việc</span><input id="b_gio_lam_viec" placeholder="8:00 - 17:00, thứ Hai - thứ Bảy"></label>
       <label class="field"><span>Website</span><input id="b_website" inputmode="url"></label>
       <label class="field"><span>Địa chỉ</span><input id="b_dia_chi"></label>
@@ -148,7 +149,7 @@ section.card > .body { padding: 14px 18px 18px; display: grid; grid-template-col
 	function fill(s, embedCode) {
 		current = s;
 		$('enabled').checked = s.enabled;
-		for (const k of ['ten', 'hotline', 'zalo', 'gio_lam_viec', 'website', 'dia_chi']) $(`b_${k}`).value = s.business[k] || '';
+		for (const k of ['ten', 'hotline', 'zalo', 'email', 'gio_lam_viec', 'website', 'dia_chi']) $(`b_${k}`).value = s.business[k] || '';
 		$('w_title').value = s.widget.title || '';
 		$('w_greeting').value = s.widget.greeting || '';
 		$('w_color').value = s.widget.color || '#0e7466';
@@ -170,7 +171,7 @@ section.card > .body { padding: 14px 18px 18px; display: grid; grid-template-col
 	function collect() {
 		return {
 			enabled: $('enabled').checked,
-			business: Object.fromEntries(['ten', 'hotline', 'zalo', 'gio_lam_viec', 'website', 'dia_chi'].map((k) => [k, $(`b_${k}`).value.trim()])),
+			business: Object.fromEntries(['ten', 'hotline', 'zalo', 'email', 'gio_lam_viec', 'website', 'dia_chi'].map((k) => [k, $(`b_${k}`).value.trim()])),
 			widget: { title: $('w_title').value.trim(), greeting: $('w_greeting').value.trim(), color: $('w_color_text').value.trim() || '#0e7466' },
 			allowed_origins: $('origins').value.split(/\s+/).filter(Boolean),
 			min_searches: Number($('min_searches').value) || 4,
