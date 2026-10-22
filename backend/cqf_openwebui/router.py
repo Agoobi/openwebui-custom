@@ -8,6 +8,8 @@ Quan tri (dang nhap Open WebUI, vai tro admin; dung get_admin_user cua Open WebU
     GET/POST /settings               cai dat (bat/tat, thong tin shop, khung chat, LLM, so lan tra toi thieu...)
     GET /kb, GET /kb/note, POST /kb/note, POST /kb/toggle, DELETE /kb/note, POST /kb/upload, GET /kb/search
     GET /inbox/index, GET /inbox/conv, POST /inbox/action, GET /status
+    POST /test/stream                trang "Thu chatbot": nhu /webchat/stream + su kien trace, tin luu rieng (khong vao
+                                     Hop thu), chay ca khi chatbot dang tat
 """
 import json, tempfile, time
 from collections import defaultdict, deque
@@ -37,7 +39,8 @@ def parts():
         home = store.root()
         k = Knowledge(home)
         box = get_inbox(home, {})
-        _parts.update(home=home, k=k, inbox=box, engine=Engine(k, box))
+        test_box = get_inbox(home / "test", {})  # tin thu cua quan tri vien: khong lan vao Hop thu
+        _parts.update(home=home, k=k, inbox=box, engine=Engine(k, box), test_engine=Engine(k, test_box, trace=True))
     return _parts
 
 
@@ -122,6 +125,29 @@ async def chat_stream(request: Request):
 
     async def events():
         async for ev in parts()["engine"].stream(*got):
+            yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(events(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
+
+
+# ---------------------------------------------------------------- thu chatbot (quan tri vien)
+
+@router.post("/test/stream")
+async def test_stream(request: Request, user=Depends(get_admin_user)):
+    try:
+        body = await request.json()
+    except ValueError:
+        raise HTTPException(400, detail="JSON không hợp lệ")
+    sid, text = str(body.get("sid", "")), str(body.get("text", "")).strip()
+    if not (8 <= len(sid) <= 64 and set(sid) <= VID_OK) or not text:
+        raise HTTPException(400, detail="Thiếu nội dung")
+    if len(text) > 1000:
+        raise HTTPException(413, detail="Tin nhắn quá dài (tối đa 1000 ký tự)")
+    s = store.load(parts()["home"])
+
+    async def events():
+        async for ev in parts()["test_engine"].stream(s, f"test:{user.id}:{sid}", text):
             yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(events(), media_type="text/event-stream",

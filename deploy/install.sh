@@ -6,7 +6,7 @@
 #   mac dinh: /opt/open-webui/venv  open-webui
 #
 # Viec lam:
-#   1. Trang tinh: loader.js, custom.css, hop-thu/, chatbot/, kien-thuc/, cqf/ vao thu muc static cua Open WebUI
+#   1. Trang tinh: loader.js, custom.css, hop-thu/, chatbot/, thu-chat/, kien-thuc/, cqf/ vao thu muc static cua Open WebUI
 #      (ca <goi>/static va <goi>/frontend/static: luc khoi dong Open WebUI chep loader.js tu frontend sang static).
 #   2. Backend: file cqf_openwebui.pth trong venv tro toi <repo>/backend (khong chep, khong sua file Open WebUI).
 #   3. systemd drop-in: chay "python -m cqf_openwebui serve" thay "open-webui serve" (= Open WebUI goc + /api/v1/cqf).
@@ -35,7 +35,7 @@ for dir in "$PKG/static" "$PKG/frontend/static"; do
     [ -f "$dir/$f" ] && [ ! -f "$dir/$f.orig" ] && cp -p "$dir/$f" "$dir/$f.orig"
     install -m 0644 "$SRC/$f" "$dir/$f"
   done
-  for page in hop-thu chatbot kien-thuc cqf; do
+  for page in hop-thu chatbot thu-chat kien-thuc cqf; do
     install -d -m 0755 "$dir/$page"
     find "$SRC/$page" -maxdepth 1 -type f \( -name '*.html' -o -name '*.js' -o -name '*.css' \) -exec install -m 0644 {} "$dir/$page/" \;
   done

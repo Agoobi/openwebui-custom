@@ -1,12 +1,12 @@
 /*
  * Open WebUI custom loader (Agoobi). Open WebUI tu nap file nay tren moi trang (/static/loader.js).
- * Them 3 hang vao sidebar, ngay duoi hang Search: Hop thu (kem so khach can xu ly), Chatbot (cai dat), Kien thuc.
+ * Them 4 hang vao sidebar, ngay duoi hang Search: Hop thu (kem so khach can xu ly), Chatbot (cai dat), Thu chatbot, Kien thuc.
  * Bam 1 hang thi trang tuong ung mo trong vung noi dung, sidebar giu nguyen (Ctrl/Cmd + bam: tab rieng).
  * Du lieu: backend cqf_openwebui chay trong Open WebUI (/api/v1/cqf). Khong sua gi khac cua Open WebUI.
  * Bam vao cau truc sidebar cua Open WebUI 0.11.4 (#sidebar-search-button): nang ban thi kiem lai.
  */
 (() => {
-	const V = 9; // doi khi doi trang de khong dinh cache
+	const V = 10; // doi khi doi trang de khong dinh cache
 	const icon = (d) =>
 		`<svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 	const PAGES = [
@@ -14,6 +14,8 @@
 			icon: icon('<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>') },
 		{ hash: 'chatbot', label: 'Chatbot', src: '/static/chatbot/index.html',
 			icon: icon('<path d="M12 8V4H8"/><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M2 14h2M20 14h2M15 13v2M9 13v2"/>') },
+		{ hash: 'thu-chat', label: 'Thử chatbot', src: '/static/thu-chat/index.html',
+			icon: icon('<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="m10 8 4 2.5-4 2.5z"/>') },
 		{ hash: 'kien-thuc', label: 'Kiến thức', src: '/static/kien-thuc/index.html',
 			icon: icon('<path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/><path d="M8 7h8M8 11h6"/>') }
 	];

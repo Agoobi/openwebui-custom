@@ -111,6 +111,10 @@ def text_tool_calls(text):
     return calls
 
 
+def _brief(h):
+    return {"source": h["source"], "title": h["title"], "chunk": h["chunk"], "score": h["score"], "text": h["text"][:700]}
+
+
 def passages_text(hits):
     return "\n\n---\n\n".join(f"[{h['source']}#{h['chunk']}] {h['title']}\n{h['text']}" for h in hits)
 
@@ -181,9 +185,10 @@ def find_name(text):
 
 
 class Engine:
-    def __init__(self, knowledge, inbox):
+    def __init__(self, knowledge, inbox, trace=False):
         self.k = knowledge
         self.inbox = inbox
+        self.trace = trace  # trang "Thu chatbot": them su kien trace (tra gi, thay doan nao, goi tool gi, chan so nao)
         self._locks = {}
 
     async def answer(self, s, conv, text, page=None):
@@ -212,6 +217,8 @@ class Engine:
                     yield ev
             except Exception as e:  # LLM loi / sai cau hinh: khach nhan cau xin lien he, chu shop thay su kien
                 logger.warning("[cqf] tra loi loi: %s", e)
+                if self.trace:
+                    yield {"type": "trace", "step": "error", "text": str(e)[:500]}
                 self.inbox.event(conv, "guard_blocked", {"ly_do": "Lỗi gọi LLM", "tom_tat": str(e)[:200], "khach_hoi": text})
                 sent = SYSTEM_ERROR_TEXT
                 yield {"type": "replace", "text": sent}
@@ -243,6 +250,8 @@ class Engine:
             yield {"type": "status", "step": "search", "text": label, "found": found}
         hits.sort(key=lambda h: -h["score"])
         hits = hits[:max(int(s.get("max_passages") or 6), 4)]
+        if self.trace:
+            yield {"type": "trace", "step": "auto", "queries": qs, "hits": [_brief(h) for h in hits]}
         evidence += [h["text"] for h in hits]
         titles = sorted({h["title"] for h in hits})
         yield {"type": "status", "step": "found",
@@ -288,6 +297,8 @@ class Engine:
                     elif name == "chuyen_nhan_vien":
                         yield {"type": "status", "step": "lead", "text": "Đã báo nhân viên"}
                     result = self._tool(conv, name, args, evidence)
+                    if self.trace:
+                        yield {"type": "trace", "step": "tool", "name": name, "args": args, "result": result[:1500]}
                     saved_lead = saved_lead or name == "luu_khach_hang"
                     messages.append({"role": "tool", "tool_call_id": c["id"], "content": result})
                 continue
@@ -297,6 +308,10 @@ class Engine:
                         blocked = bad
                         break
                     yield {"type": "delta", "text": part}
+            if blocked and self.trace:
+                yield {"type": "trace", "step": "blocked", "numbers": blocked[:10], "draft": guard.text[:1500]}
+            elif not blocked and not guard.sent.strip() and self.trace:
+                yield {"type": "trace", "step": "empty", "rounds": round_no + 1}
             if blocked:  # so lieu khong co trong tai lieu vua tra: thay ca tin, bao chu shop
                 self.inbox.event(conv, "guard_blocked", {"khach_hoi": text, "so_lieu_khong_co_can_cu": blocked[:10],
                                                          "tom_tat": guard.text[:300]})

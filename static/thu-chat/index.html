@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Thử chatbot · Open WebUI</title>
+<link rel="icon" href="/static/favicon.png">
+<link rel="stylesheet" href="/static/cqf/ui.css?v=2">
+<!-- Thu chatbot: quan tri vien chat voi bot nhu khach (cung cai dat, kien thuc), xem bot da tra gi, thay doan nao, goi
+     tool gi, chan so lieu nao. Tin thu khong vao Hop thu. Backend: POST /api/v1/cqf/test/stream (chi quan tri vien). -->
+<style>
+html, body { height: 100%; }
+body { display: flex; flex-direction: column; }
+.lab { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 380px; }
+.chat { min-height: 0; display: flex; flex-direction: column; }
+.chat-head { display: flex; align-items: center; gap: 12px; padding: 14px 20px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.chat-head h1 { margin: 0; font-size: 20px; font-weight: 700; }
+.chat-head .spacer { flex: 1; }
+.log { flex: 1; overflow-y: auto; }
+.log-inner { max-width: 760px; margin: 0 auto; padding: 20px 20px 8px; display: flex; flex-direction: column; gap: 14px; }
+.msg { display: flex; flex-direction: column; gap: 6px; max-width: 88%; min-width: 0; }
+.msg.user { align-self: flex-end; align-items: flex-end; }
+.bubble { padding: 9px 13px; border-radius: 14px; overflow-wrap: anywhere; min-width: 0; max-width: 100%; }
+.user .bubble { background: var(--accent); color: var(--on-accent); border-bottom-right-radius: 4px; white-space: pre-wrap; }
+.bot .bubble { background: var(--raised); border-bottom-left-radius: 4px; }
+.bot.selected .bubble { box-shadow: 0 0 0 2px var(--accent); }
+.bot .bubble p { margin: .35em 0; } .bot .bubble p:first-child { margin-top: 0; } .bot .bubble p:last-child { margin-bottom: 0; }
+.bot .bubble ul, .bot .bubble ol { margin: .35em 0; padding-left: 1.3em; }
+.bot .bubble h4 { margin: .5em 0 .25em; font-size: 14px; }
+.bot .bubble code { font-family: var(--mono); font-size: .88em; background: var(--surface); padding: 1px 4px; border-radius: 4px; }
+.bot .bubble .tw { overflow-x: auto; margin: .5em 0; }
+.bot .bubble table { border-collapse: collapse; font-size: 13px; }
+.bot .bubble th, .bot .bubble td { border: 1px solid var(--line-strong); padding: 4px 8px; text-align: left; }
+.bot .bubble th { background: var(--surface); }
+.bot .bubble hr { border: 0; border-top: 1px solid var(--line-strong); }
+.msg-foot { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 12px; color: var(--ink-3); }
+.linkish { border: 0; background: none; padding: 0; color: var(--accent); font-size: 12px; font-weight: 600; }
+.steps { font-size: 12.5px; color: var(--ink-3); display: flex; flex-direction: column; gap: 2px; }
+.steps span::before { content: "• "; }
+.typing { display: inline-flex; gap: 4px; padding: 4px 0; }
+.typing i { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-3); animation: blink 1s infinite; }
+.typing i:nth-child(2) { animation-delay: .15s; } .typing i:nth-child(3) { animation-delay: .3s; }
+@keyframes blink { 0%, 80%, 100% { opacity: .25; } 40% { opacity: 1; } }
+.compose { border-top: 1px solid var(--line); padding: 12px 20px max(14px, env(safe-area-inset-bottom)); }
+.compose form { max-width: 760px; margin: 0 auto; display: flex; gap: 8px; align-items: flex-end; }
+.compose textarea { flex: 1; min-width: 0; resize: none; border: 1px solid var(--line-strong); border-radius: var(--r-lg); padding: 9px 12px; background: var(--surface); outline: none; max-height: 160px; line-height: 1.45; }
+.compose textarea:focus { border-color: var(--accent); }
+.compose .hint { max-width: 760px; margin: 6px auto 0; }
+.samples { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.samples button { border: 1px solid var(--line-strong); background: var(--surface); border-radius: 999px; padding: 5px 12px; font-size: 13px; color: var(--ink-2); }
+.samples button:hover { border-color: var(--accent); color: var(--accent); }
+
+.trace { border-left: 1px solid var(--line); background: var(--surface); min-height: 0; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 16px; }
+.trace section { display: flex; flex-direction: column; gap: 8px; }
+.trace h2 { margin: 0; font-size: 15px; }
+.tq { font-size: 12.5px; color: var(--ink-2); display: flex; flex-direction: column; gap: 2px; }
+.tq span::before { content: "→ "; color: var(--ink-3); }
+details.hit { border: 1px solid var(--line); border-radius: var(--r); background: var(--bg); font-size: 12.5px; }
+details.hit summary { cursor: pointer; padding: 7px 10px; list-style: none; display: flex; gap: 8px; align-items: baseline; }
+details.hit summary::-webkit-details-marker { display: none; }
+details.hit summary b { flex: 1; min-width: 0; color: var(--ink); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+details.hit[open] summary b { white-space: normal; }
+details.hit pre { margin: 0; padding: 8px 10px; border-top: 1px solid var(--line); white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.5 var(--mono); color: var(--ink-2); max-height: 280px; overflow-y: auto; }
+.score { font: 11px var(--mono); color: var(--ink-3); flex: none; }
+.tool { border: 1px solid var(--line); border-radius: var(--r); padding: 8px 10px; font-size: 12.5px; display: flex; flex-direction: column; gap: 4px; background: var(--bg); }
+.tool code { font: 12px var(--mono); overflow-wrap: anywhere; }
+.alert { border-radius: var(--r); padding: 8px 10px; font-size: 12.5px; }
+.alert.bad { background: var(--bad-soft); color: var(--bad); }
+.alert.warn { background: var(--warn-soft); color: var(--warn); }
+.alert pre { white-space: pre-wrap; font: 12px/1.5 var(--mono); margin: 6px 0 0; color: var(--ink-2); }
+
+@media (max-width: 1060px) {
+  .lab { grid-template-columns: minmax(0, 1fr); }
+  .trace { display: none; }
+  .lab.show-trace .chat { display: none; }
+  .lab.show-trace .trace { display: flex; border-left: 0; }
+}
+@media (min-width: 1061px) { .only-narrow { display: none !important; } }
+@media (max-width: 760px) { .chat-head { padding: 12px 16px; } .log-inner { padding: 16px; } .compose { padding: 10px 16px max(12px, env(safe-area-inset-bottom)); } .msg { max-width: 94%; } }
+@media (prefers-reduced-motion: reduce) { .typing i { animation: none; opacity: .6; } }
+</style>
+</head>
+<body>
+<header class="top">
+  <a class="icon-btn" href="/" data-cqf-home title="Về Open WebUI" aria-label="Về Open WebUI">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/></svg>
+  </a>
+  <nav class="crumb" aria-label="Vị trí"><a href="/">Open WebUI</a><span aria-hidden="true">›</span><b>Thử chatbot</b></nav>
+</header>
+
+<main class="lab" id="lab">
+  <section class="chat" aria-label="Khung chat thử">
+    <div class="chat-head">
+      <h1>Thử chatbot</h1>
+      <span class="chip c-muted" id="botState">…</span>
+      <span class="spacer"></span>
+      <button class="btn" id="newChat" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Cuộc trò chuyện mới</button>
+    </div>
+    <div class="log" id="log"><div class="log-inner" id="logInner" aria-live="polite"></div></div>
+    <div class="compose">
+      <form id="form">
+        <textarea id="text" rows="1" placeholder="Nhập câu hỏi như khách hàng…" aria-label="Câu hỏi thử" maxlength="1000"></textarea>
+        <button class="btn primary" id="send" type="submit">Gửi</button>
+      </form>
+      <p class="hint">Bot trả lời giống hệt trên website (cùng cài đặt, kiến thức đang bật). Tin thử không vào Hộp thư.</p>
+    </div>
+  </section>
+
+  <aside class="trace" id="trace" aria-label="Bot đã làm gì">
+    <button class="btn only-narrow" id="backToChat" type="button">‹ Về khung chat</button>
+    <div class="empty" id="traceEmpty"><h2>Bot đã làm gì</h2><p>Gửi một câu hỏi, rồi chọn câu trả lời để xem bot đã tra những gì, thấy đoạn tài liệu nào, gọi công cụ gì.</p></div>
+    <div id="traceBody" hidden></div>
+  </aside>
+</main>
+
+<script src="/static/cqf/ui.js?v=2"></script>
+<script src="/static/thu-chat/thu-chat.js?v=1"></script>
+</body>
+</html>
