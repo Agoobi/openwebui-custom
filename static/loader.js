@@ -1,12 +1,12 @@
 /*
  * Open WebUI custom loader (Agoobi). Open WebUI tu nap file nay tren moi trang (/static/loader.js).
  * Them 4 hang vao sidebar, ngay duoi hang Search: Hop thu (kem so khach can xu ly), Chatbot (cai dat), Thu chatbot, Kien thuc.
- * Bam 1 hang thi trang tuong ung mo trong vung noi dung, sidebar giu nguyen (Ctrl/Cmd + bam: tab rieng).
+ * Bam 1 hang thi trang tuong ung mo trong vung noi dung, sidebar giu nguyen (Ctrl/Cmd + bam: tab moi, cung co sidebar).
  * Du lieu: backend cqf_openwebui chay trong Open WebUI (/api/v1/cqf). Khong sua gi khac cua Open WebUI.
  * Bam vao cau truc sidebar cua Open WebUI 0.11.4 (#sidebar-search-button): nang ban thi kiem lai.
  */
 (() => {
-	const V = 10; // doi khi doi trang de khong dinh cache
+	const V = 11; // doi khi doi trang de khong dinh cache
 	const icon = (d) =>
 		`<svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 	const PAGES = [
@@ -46,7 +46,7 @@
 				(p.badge ? '<span class="cqf-inbox-count" hidden></span>' : '');
 			a.addEventListener('click', (e) => {
 				e.preventDefault();
-				if (e.metaKey || e.ctrlKey || e.shiftKey) return void window.open(p.src, '_blank');
+				if (e.metaKey || e.ctrlKey || e.shiftKey) return void window.open(`/#${p.hash}`, '_blank'); // tab moi, van co sidebar
 				if (location.hash !== `#${p.hash}`) history.pushState(history.state, '', `${location.pathname}${location.search}#${p.hash}`);
 				sync();
 			});

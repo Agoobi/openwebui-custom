@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Mo rieng (link cu, bookmark, Ctrl+bam): ve Open WebUI de giu sidebar; ?standalone=1 de mo rieng -->
+<script>if (window.top === window && !/[?&]standalone/.test(location.search)) location.replace('/#chatbot');</script>
 <title>Chatbot · Open WebUI</title>
 <link rel="icon" href="/static/favicon.png">
 <link rel="stylesheet" href="/static/cqf/ui.css?v=2">
@@ -63,7 +65,7 @@ section.card > .body { padding: 14px 18px 18px; display: grid; grid-template-col
     <header><h2>Mã nhúng</h2><span class="hint">Dán 1 dòng này vào website (WordPress: plugin chèn header/footer hoặc theme).</span></header>
     <div class="body">
       <div class="wide embed-code"><code id="embed">…</code><button class="btn" id="copyEmbed" type="button">Chép</button></div>
-      <div class="wide"><a class="btn primary" id="openLab" href="/static/thu-chat/index.html">Thử chatbot (xem bot làm gì)</a> <button class="btn" id="tryBot" type="button">Xem khung chat như trên website</button> <span class="hint">Lưu trước khi thử để dùng cài đặt mới.</span></div>
+      <div class="wide"><a class="btn primary" id="openLab" href="/#thu-chat" target="_top">Thử chatbot (xem bot làm gì)</a> <button class="btn" id="tryBot" type="button">Xem khung chat như trên website</button> <span class="hint">Lưu trước khi thử để dùng cài đặt mới.</span></div>
     </div>
   </section>
 
