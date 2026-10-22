@@ -215,8 +215,15 @@ class Knowledge:
             if s > 0:
                 scored.append((s, d))
         scored.sort(key=lambda x: -x[0])
+        picked, per = [], {}
+        for s, d in scored:  # toi da 2 doan / ghi chu: mot ghi chu lon (muc luc, catalogue) khong chiem het cho
+            if per.get(d["source"], 0) < 2:
+                per[d["source"]] = per.get(d["source"], 0) + 1
+                picked.append((s, d))
+                if len(picked) == k:
+                    break
         return [{"source": d["source"], "title": d["title"], "chunk": d["chunk"], "score": round(s, 3), "text": d["text"]}
-                for s, d in scored[:k]]
+                for s, d in picked]
 
     def read(self, name, chunk=None):
         """Doan (hoac ca ghi chu) dang bat, cho tool doc_tai_lieu."""
