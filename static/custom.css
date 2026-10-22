@@ -46,3 +46,8 @@
 .dark [id^="sidebar-cqf-"].cqf-active {
 	background: rgba(255, 255, 255, 0.045);
 }
+
+/* Dang mo 1 trang cqf: an dau "dang chon" cua Open WebUI (theo URL, vd /notes hay chat dang mo) de chi 1 muc sang */
+.cqf-page-open #sidebar a:not([id^="sidebar-cqf-"]):not(:hover) {
+	background-color: transparent !important;
+}
