@@ -10,6 +10,7 @@ Quan tri (dang nhap Open WebUI, vai tro admin; dung get_admin_user cua Open WebU
     GET /inbox/index, GET /inbox/conv, POST /inbox/action, GET /status
     POST /test/stream                trang "Thu chatbot": nhu /webchat/stream + su kien trace, tin luu rieng (khong vao
                                      Hop thu), chay ca khi chatbot dang tat
+    GET /test/sessions, GET /test/session, DELETE /test/session   lich su thu (tren server, theo quan tri vien)
 """
 import json, tempfile, time
 from collections import defaultdict, deque
@@ -23,6 +24,7 @@ from . import kb, store
 from .engine import Engine
 from .inbox import get_inbox
 from .knowledge import Knowledge
+from .testlog import TestLog
 
 router = APIRouter()
 STATIC = Path(__file__).parent / "static"
@@ -40,7 +42,8 @@ def parts():
         k = Knowledge(home)
         box = get_inbox(home, {})
         test_box = get_inbox(home / "test", {})  # tin thu cua quan tri vien: khong lan vao Hop thu
-        _parts.update(home=home, k=k, inbox=box, engine=Engine(k, box), test_engine=Engine(k, test_box, trace=True))
+        _parts.update(home=home, k=k, inbox=box, engine=Engine(k, box), test_engine=Engine(k, test_box, trace=True),
+                      test_log=TestLog(home))
     return _parts
 
 
@@ -147,11 +150,57 @@ async def test_stream(request: Request, user=Depends(get_admin_user)):
     s = store.load(parts()["home"])
 
     async def events():
-        async for ev in parts()["test_engine"].stream(s, f"test:{user.id}:{sid}", text):
-            yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
+        answer, trace = "", {"tools": []}
+        try:
+            async for ev in parts()["test_engine"].stream(s, f"test:{user.id}:{sid}", text):
+                kind = ev["type"]
+                if kind == "delta":
+                    answer += ev["text"]
+                elif kind == "replace":
+                    answer = ev["text"]
+                elif kind == "trace":
+                    step = ev["step"]
+                    if step == "auto":
+                        trace["auto"] = {"queries": ev["queries"], "hits": ev["hits"]}
+                    elif step == "tool":
+                        trace["tools"].append({k: ev[k] for k in ("name", "args", "result")})
+                    elif step == "blocked":
+                        trace["blocked"] = {"numbers": ev["numbers"], "draft": ev["draft"]}
+                    elif step == "empty":
+                        trace["empty"] = ev["rounds"]
+                    elif step == "error":
+                        trace["error"] = ev["text"]
+                yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
+        finally:  # luu ca khi trinh duyet dong giua chung (tra loi den dau luu den do)
+            parts()["test_log"].add(user.id, sid, text, answer or "_(bị ngắt)_", trace)
 
     return StreamingResponse(events(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
+
+
+@router.get("/test/sessions")
+async def test_sessions(user=Depends(get_admin_user)):
+    return {"ok": True, "sessions": parts()["test_log"].sessions(user.id)}
+
+
+@router.get("/test/session")
+async def test_session(sid: str, user=Depends(get_admin_user)):
+    try:
+        data = parts()["test_log"].get(user.id, sid)
+    except ValueError:
+        raise HTTPException(400, detail="sid")
+    if not data:
+        raise HTTPException(404, detail="Không có cuộc thử này")
+    return {"ok": True, "session": data}
+
+
+@router.delete("/test/session")
+async def test_session_delete(sid: str, user=Depends(get_admin_user)):
+    try:
+        parts()["test_log"].delete(user.id, sid)
+    except ValueError:
+        raise HTTPException(400, detail="sid")
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------- cai dat

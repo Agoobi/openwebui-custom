@@ -11,7 +11,7 @@ Sidebar Open WebUI có thêm 4 mục (dưới Search), mở ngay trong vùng n�
 | --- | --- |
 | **Hộp thư** (kèm số khách cần xử lý) | Danh sách khách (Tất cả / Cần xử lý / Đang chat / Đã xong, lọc kênh, tìm, mới nhất / chờ lâu nhất), hội thoại, thẻ sự kiện (để lại thông tin, cần nhân viên, bot không trả lời được), thông tin khách, nút Xong / Mở lại. |
 | **Chatbot** | Bật/tắt, mã nhúng (1 dòng script), thông tin shop, khung chat (tiêu đề, lời chào, màu), website được gắn, **số lần tra kiến thức tối thiểu** (mặc định 4), xin khách gì khi không có câu trả lời, LLM (URL, model, key, thử kết nối), thử chatbot ngay trên trang. |
-| **Thử chatbot** | Chat với bot như khách (cùng cài đặt, kiến thức đang bật; chạy cả khi chatbot đang tắt trên website). Bên phải là "Bot đã làm gì" cho từng câu trả lời: các câu tra tự động, đoạn tài liệu đưa cho bot, công cụ bot gọi thêm và kết quả, số liệu bị chặn. Tin thử lưu riêng (`cqf/test/`), không vào Hộp thư. |
+| **Thử chatbot** | Chat với bot như khách (cùng cài đặt, kiến thức đang bật; chạy cả khi chatbot đang tắt trên website). Bên phải là "Bot đã làm gì" cho từng câu trả lời: các câu tra tự động, đoạn tài liệu đưa cho bot, công cụ bot gọi thêm và kết quả, số liệu bị chặn. Tin thử lưu riêng trên server (`cqf/test/`, theo từng quản trị viên), không vào Hộp thư; nút **Lịch sử** mở lại các cuộc thử trước, máy / trình duyệt nào cũng thấy. |
 | **Kiến thức** | Kiểu Obsidian: tải file Word / Excel / CSV / PDF có chữ / TXT / MD lên (kéo thả được) thành ghi chú, xem / sửa Markdown, `[[liên kết]]` giữa ghi chú, mục lục, ghi chú trỏ tới, bật/tắt từng ghi chú, cảnh báo khi số liệu sửa tay khác file gốc, **thử tìm như bot**. |
 
 ## Một lượt trả lời
@@ -47,7 +47,7 @@ dán mã nhúng vào website.
 
 - Công khai (khung chat, kiểm Origin trong danh sách website): `GET /webchat/widget.js`, `POST /webchat/chat`.
 - Quản trị (đăng nhập Open WebUI, vai trò admin, dùng `get_admin_user` của Open WebUI): `/settings`,
-  `/settings/test`, `/kb*`, `/inbox/*`, `/status`, `/test/stream` (Thử chatbot: như `/webchat/stream` kèm sự kiện `trace`).
+  `/settings/test`, `/kb*`, `/inbox/*`, `/status`, `/test/stream` (Thử chatbot: như `/webchat/stream` kèm sự kiện `trace`), `/test/sessions`, `/test/session`.
 
 ## Phiên bản
 

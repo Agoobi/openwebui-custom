@@ -1,9 +1,10 @@
 /* Trang Thu chatbot (xem index.html). Chat voi bot qua /api/v1/cqf/test/stream (SSE), ben phai la "Bot da lam gi":
- * cau tra tu dong, doan tai lieu tim thay, tool bot goi, so lieu bi chan. Moi chu dua vao trang deu escape. */
+ * cau tra tu dong, doan tai lieu tim thay, tool bot goi, so lieu bi chan. Lich su luu tren server (/test/sessions),
+ * mo may nao cung thay; trinh duyet chi nho dang mo cuoc thu nao. Moi chu dua vao trang deu escape. */
 (() => {
 	'use strict';
-	const { api, AuthError, $, el, toast, authScreen } = window.CQF;
-	const KEY = 'cqf_test_chat_v1';
+	const { api, AuthError, $, el, toast, authScreen, clock } = window.CQF;
+	const KEY = 'cqf_test_chat_sid';
 	const SAMPLES = ['Bên mình bán những sản phẩm gì?', 'Cho em xin báo giá', 'Giờ làm việc thế nào?', 'Tôi muốn gặp nhân viên tư vấn'];
 	const TOOL = { tim_kien_thuc: 'Tra thêm tài liệu', doc_tai_lieu: 'Đọc nguyên văn tài liệu', luu_khach_hang: 'Lưu thông tin khách', chuyen_nhan_vien: 'Báo nhân viên' };
 
@@ -47,12 +48,75 @@
 		return out.join('');
 	}
 
-	// ------------------------------------------------------------ trang thai (luu trong trinh duyet)
+	// ------------------------------------------------------------ trang thai (lich su tren server)
 	const rid = () => Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => b.toString(16).padStart(2, '0')).join('');
-	const load = () => { try { return JSON.parse(localStorage.getItem(KEY)) || null; } catch { return null; } };
-	let state = load() || { sid: rid(), turns: [] };
-	const save = () => { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { /* bo qua */ } };
+	const remembered = () => { try { return localStorage.getItem(KEY) || ''; } catch { return ''; } };
+	const remember = (sid) => { try { localStorage.setItem(KEY, sid); } catch { /* bo qua */ } };
+	let state = { sid: rid(), turns: [] };
+	let sessions = [];
 	let selected = null, busy = false;
+
+	async function loadSessions() {
+		sessions = (await api('/test/sessions')).sessions || [];
+		renderHistory();
+	}
+
+	async function open(sid) {
+		if (busy) return;
+		try {
+			const { session } = await api(`/test/session?sid=${encodeURIComponent(sid)}`);
+			state = { sid: session.sid, turns: session.turns || [] };
+		} catch (e) {
+			if (e instanceof AuthError) return authScreen(document.querySelector('main'));
+			state = { sid: rid(), turns: [] };
+		}
+		remember(state.sid);
+		selected = null;
+		renderLog();
+		renderHistory();
+		const last = state.turns.length - 1;
+		if (last >= 0 && state.turns[last].role === 'bot') select(last, false);
+		else renderTrace();
+	}
+
+	function startNew() {
+		if (busy) return;
+		state = { sid: rid(), turns: [] };
+		remember(state.sid);
+		selected = null;
+		renderLog();
+		renderTrace();
+		renderHistory();
+		$('text').focus();
+	}
+
+	// ------------------------------------------------------------ lich su thu
+	function renderHistory() {
+		const list = $('histList');
+		list.replaceChildren();
+		$('histBtn').textContent = sessions.length ? `Lịch sử (${sessions.length})` : 'Lịch sử';
+		if (!sessions.length) return list.append(el('p', 'hint', 'Chưa có cuộc thử nào.'));
+		for (const x of sessions) {
+			const row = el('div', 'hrow' + (x.sid === state.sid ? ' on' : ''));
+			const b = el('button', 'hopen');
+			b.type = 'button';
+			b.append(el('b', '', x.title || '(trống)'), el('span', 'hint', `${clock(x.updated_at)} · ${x.turns} câu hỏi`));
+			b.addEventListener('click', () => { closeHistory(); open(x.sid); });
+			const del = el('button', 'icon-btn hdel', '×');
+			del.type = 'button';
+			del.title = 'Xoá cuộc thử này';
+			del.setAttribute('aria-label', `Xoá cuộc thử: ${x.title}`);
+			del.addEventListener('click', async () => {
+				if (del.dataset.arm !== '1') { del.dataset.arm = '1'; del.textContent = 'Xoá?'; return; }
+				await api(`/test/session?sid=${encodeURIComponent(x.sid)}`, { method: 'DELETE' }).catch((e) => toast(e.message));
+				if (x.sid === state.sid) startNew();
+				loadSessions().catch(() => {});
+			});
+			row.append(b, del);
+			list.append(row);
+		}
+	}
+	const closeHistory = () => { $('hist').hidden = true; $('histBtn').setAttribute('aria-expanded', 'false'); };
 
 	// ------------------------------------------------------------ khung chat
 	function renderLog() {
@@ -256,9 +320,10 @@
 			if (!bot.text) bot.text = '_(không có câu trả lời)_';
 			busy = false;
 			$('send').disabled = false;
-			save();
+			remember(state.sid);
 			renderLog();
 			select(i, false);
+			loadSessions().catch(() => {}); // server da luu luot nay
 		}
 	}
 
@@ -277,15 +342,14 @@
 		send(v);
 		ta.focus();
 	});
-	$('newChat').addEventListener('click', () => {
-		if (busy) return;
-		state = { sid: rid(), turns: [] };
-		selected = null;
-		save();
-		renderLog();
-		renderTrace();
-		ta.focus();
+	$('newChat').addEventListener('click', startNew);
+	$('histBtn').addEventListener('click', () => {
+		const h = $('hist');
+		h.hidden = !h.hidden;
+		$('histBtn').setAttribute('aria-expanded', String(!h.hidden));
 	});
+	document.addEventListener('click', (e) => { if (!e.target.closest('#hist, #histBtn')) closeHistory(); });
+	document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeHistory(); });
 	$('backToChat').addEventListener('click', () => $('lab').classList.remove('show-trace'));
 
 	(async () => {
@@ -299,10 +363,11 @@
 			if (e instanceof AuthError) return authScreen(document.querySelector('main'));
 			$('botState').hidden = true;
 		}
-		state.turns.forEach((t) => { if (t.pending) { t.pending = false; t.text = t.text || '_(bị ngắt)_'; } });
-		renderLog();
-		const last = state.turns.length - 1;
-		if (last >= 0 && state.turns[last].role === 'bot') select(last, false);
+		try { await loadSessions(); } catch (e) { if (e instanceof AuthError) return authScreen(document.querySelector('main')); }
+		const want = remembered();
+		if (sessions.some((x) => x.sid === want)) await open(want);
+		else if (sessions.length) await open(sessions[0].sid);
+		else startNew();
 		ta.focus();
 	})();
 })();

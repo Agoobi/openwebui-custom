@@ -18,6 +18,14 @@ body { display: flex; flex-direction: column; }
 .chat-head { display: flex; align-items: center; gap: 12px; padding: 14px 20px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
 .chat-head h1 { margin: 0; font-size: 20px; font-weight: 700; }
 .chat-head .spacer { flex: 1; }
+.hist-wrap { position: relative; }
+.hist { position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; width: min(360px, calc(100vw - 32px)); max-height: 60vh; overflow-y: auto; background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-lg); box-shadow: 0 8px 24px rgba(0,0,0,.12); padding: 10px; display: flex; flex-direction: column; gap: 6px; }
+.hrow { display: flex; align-items: center; gap: 4px; border-radius: var(--r); }
+.hrow.on { background: var(--accent-soft); }
+.hopen { flex: 1; min-width: 0; border: 0; background: none; text-align: left; padding: 6px 8px; border-radius: var(--r); display: flex; flex-direction: column; }
+.hopen:hover { background: var(--raised); }
+.hopen b { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hdel { width: auto; min-width: 32px; padding: 0 6px; font-size: 13px; }
 .log { flex: 1; overflow-y: auto; }
 .log-inner { max-width: 760px; margin: 0 auto; padding: 20px 20px 8px; display: flex; flex-direction: column; gap: 14px; }
 .msg { display: flex; flex-direction: column; gap: 6px; max-width: 88%; min-width: 0; }
@@ -96,6 +104,10 @@ details.hit pre { margin: 0; padding: 8px 10px; border-top: 1px solid var(--line
       <h1>Thử chatbot</h1>
       <span class="chip c-muted" id="botState">…</span>
       <span class="spacer"></span>
+      <div class="hist-wrap">
+        <button class="btn" id="histBtn" type="button" aria-expanded="false" aria-controls="hist">Lịch sử</button>
+        <div class="hist" id="hist" hidden><span class="eyebrow">Các cuộc thử (lưu trên server, máy nào cũng thấy)</span><div id="histList"></div></div>
+      </div>
       <button class="btn" id="newChat" type="button">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Cuộc trò chuyện mới</button>
     </div>
@@ -117,6 +129,6 @@ details.hit pre { margin: 0; padding: 8px 10px; border-top: 1px solid var(--line
 </main>
 
 <script src="/static/cqf/ui.js?v=2"></script>
-<script src="/static/thu-chat/thu-chat.js?v=2"></script>
+<script src="/static/thu-chat/thu-chat.js?v=3"></script>
 </body>
 </html>
