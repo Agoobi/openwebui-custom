@@ -171,7 +171,8 @@ def had_handoff(inbox, conv):
 
 PROMISED_HANDOFF = re.compile(r"(chuyển|báo|nhờ|để) (cho )?(kỹ sư|nhân viên)", re.I)
 HANDED_OFF = re.compile(r"(đã|em) báo (nhân viên|kỹ sư)", re.I)
-ASKED_CONTACT = re.compile(r"số điện thoại|\bsđt\b|để lại (tên|thông tin)|cho em xin (tên|số|email|zalo)", re.I)
+# bot da xin lien he: "xin / de lai / cho em (ten va) so Zalo / SDT" (bo dau ** Markdown truoc khi so)
+ASKED_CONTACT = re.compile(r"(xin|để lại|cho em)[^.?!\n]{0,30}(zalo|số điện thoại|\bsđt\b|email)", re.I)
 
 
 TEXT_CALL_START = "<｜"
@@ -354,7 +355,8 @@ class Engine:
                "sources": titles}
         docs = passages_text(hits) if hits else "Không tìm thấy đoạn nào liên quan. Thử tim_kien_thuc với cách diễn đạt khác."
 
-        asked = any(m["role"] == "assistant" and ASKED_CONTACT.search(m["text"]) for m in hist[:-1])
+        asked = any(m["role"] == "assistant" and ASKED_CONTACT.search(m["text"].replace("*", ""))
+                    for m in hist[:-1])
         messages = [{"role": "system", "content": rules(s, asked) + "\n\n[TÀI LIỆU DOANH NGHIỆP]\n" + docs}]
         messages += [{"role": m["role"], "content": m["text"]} for m in hist[-12:]]
         handed = any(m["role"] == "assistant" and HANDED_OFF.search(m["text"]) for m in hist[:-1])
