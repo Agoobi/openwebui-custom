@@ -147,6 +147,12 @@ def rules(s, asked_contact=False):
 
 
 NO_ANSWER_AGAIN = "Dạ phần này em chưa có thông tin chính xác, em nhờ kỹ sư kiểm tra rồi báo lại anh/chị ạ."  # da xin lien he roi
+def had_handoff(inbox, conv):
+    """Cuoc chat da co su kien bao nhan vien (tool hoac tu dong) chua."""
+    msgs = (inbox.conversation(conv) or {}).get("messages", [])
+    return any(m.get("role") == "event" and m.get("kind") == "handoff" for m in msgs)
+
+
 PROMISED_HANDOFF = re.compile(r"(chuyển|báo|nhờ|để) (cho )?(kỹ sư|nhân viên)", re.I)
 HANDED_OFF = re.compile(r"(đã|em) báo (nhân viên|kỹ sư)", re.I)
 ASKED_CONTACT = re.compile(r"số điện thoại|\bsđt\b|để lại (tên|thông tin)|cho em xin (tên|số|email|zalo)", re.I)
@@ -400,7 +406,8 @@ class Engine:
                 yield {"type": "replace", "text": NO_ANSWER_AGAIN if asked else kb.fallback_text(s)}
             break
 
-        if PROMISED_HANDOFF.search(said) and not handed_now:  # bot hua chuyen ky su ma quen goi tool: van bao chu shop
+        # bot hua chuyen ky su ma quen goi tool: van bao chu shop, 1 lan moi cuoc chat
+        if PROMISED_HANDOFF.search(said) and not (handed_now or handed or had_handoff(self.inbox, conv)):
             self.inbox.event(conv, "handoff", {"ly_do": "Bot hẹn chuyển kỹ sư / nhân viên", "tom_tat": text[:300]})
         name = find_name(text)
         if not saved_lead:  # khach de lai so ma model khong luu: van bao chu shop
