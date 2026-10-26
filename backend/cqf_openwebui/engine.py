@@ -144,6 +144,7 @@ def rules(s, asked_contact=False):
             f"thẳng từ đây): {info or 'chưa có'}.")
 
 
+HANDED_OFF = re.compile(r"(đã|em) báo (nhân viên|kỹ sư)", re.I)
 ASKED_CONTACT = re.compile(r"số điện thoại|\bsđt\b|để lại (tên|thông tin)|cho em xin (tên|số|email|zalo)", re.I)
 
 
@@ -321,6 +322,13 @@ class Engine:
         asked = any(m["role"] == "assistant" and ASKED_CONTACT.search(m["text"]) for m in hist[:-1])
         messages = [{"role": "system", "content": rules(s, asked) + "\n\n[TÀI LIỆU DOANH NGHIỆP]\n" + docs}]
         messages += [{"role": m["role"], "content": m["text"]} for m in hist[-12:]]
+        handed = any(m["role"] == "assistant" and HANDED_OFF.search(m["text"]) for m in hist[:-1])
+        if asked or handed:  # nhac sat cau tra loi (model hay quen quy tac dau prompt sau vai luot)
+            messages.append({"role": "system", "content": " ".join(
+                (["Đã xin thông tin liên hệ ở trên: câu trả lời này KHÔNG xin tên / số điện thoại / Zalo nữa."] if asked
+                 else []) +
+                (["Đã báo nhân viên ở trên: không gọi chuyen_nhan_vien lại, không nói lại 'đã báo nhân viên'."] if handed
+                 else []))})
 
         # 2. LLM (stream); vong co tool: model co the tra them / luu khach truoc khi tra loi
         rounds = int(s.get("max_tool_rounds") or 0)
