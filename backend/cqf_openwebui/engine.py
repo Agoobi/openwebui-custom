@@ -144,6 +144,7 @@ def rules(s, asked_contact=False):
             f"thẳng từ đây): {info or 'chưa có'}.")
 
 
+NO_ANSWER_AGAIN = "Dạ phần này em chưa có thông tin chính xác, em nhờ kỹ sư kiểm tra rồi báo lại anh/chị ạ."  # da xin lien he roi
 HANDED_OFF = re.compile(r"(đã|em) báo (nhân viên|kỹ sư)", re.I)
 ASKED_CONTACT = re.compile(r"số điện thoại|\bsđt\b|để lại (tên|thông tin)|cho em xin (tên|số|email|zalo)", re.I)
 
@@ -387,9 +388,9 @@ class Engine:
             if blocked:  # so lieu khong co trong tai lieu vua tra: thay ca tin, bao chu shop
                 self.inbox.event(conv, "guard_blocked", {"khach_hoi": text, "so_lieu_khong_co_can_cu": blocked[:10],
                                                          "tom_tat": guard.text[:300]})
-                yield {"type": "replace", "text": kb.fallback_text(s)}
+                yield {"type": "replace", "text": NO_ANSWER_AGAIN if asked else kb.fallback_text(s)}
             elif not guard.sent.strip():
-                yield {"type": "replace", "text": kb.fallback_text(s)}
+                yield {"type": "replace", "text": NO_ANSWER_AGAIN if asked else kb.fallback_text(s)}
             break
 
         name = find_name(text)
