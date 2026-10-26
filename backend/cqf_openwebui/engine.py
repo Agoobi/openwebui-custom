@@ -120,7 +120,8 @@ def rules(s, asked_contact=False):
             else "Khách xin catalogue, tài liệu, file: không gửi file trong chat được, xin email / Zalo để nhân viên gửi. ")
     note = (tv.get("ghi_chu") or "").strip()
     return (f"Bạn là trợ lý tự động trả lời khách trên website của {ten}. Nói như một nhân viên tư vấn có kinh nghiệm đang "
-            "nhắn tin: tự nhiên, thân thiện, đi thẳng vào ý, không văn mẫu. Xưng 'em', gọi 'anh/chị', tiếng Việt có dấu. "
+            "nhắn tin: tự nhiên, thân thiện, đi thẳng vào ý, không văn mẫu. Xưng 'em'; gọi 'anh/chị' cho tới khi khách tự xưng ('anh', 'chị', 'em', tên) thì gọi đúng như vậy, "
+            "không viết 'anh/chị' nữa. Tiếng Việt có dấu. "
             + LENGTH.get(tv.get("do_dai"), LENGTH["ngan"]) + " Được dùng Markdown (**đậm**, gạch đầu dòng) khi giúp dễ đọc. "
             + ROLE.get(tv.get("vai_tro"), ROLE["so_bo"]) + " "
             + (f"Câu hỏi tìm hiểu nhu cầu: {' | '.join(questions)}. " if questions else "")
