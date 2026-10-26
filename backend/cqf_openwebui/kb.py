@@ -339,6 +339,11 @@ def unsupported_numbers(response: str, evidence: str, user_text: str = ""):
     for m in LONGNUM.finditer(response):
         d = re.sub(r"\D", "", m.group(0))
         if len(d) >= 6 and not any(a <= m.start() < b for a, b in spans) and d not in ev_digits:
+            # nhieu so dung canh nhau ("Supra R30 30.000 rpm" -> "30 30.000"), moi so deu co trong tai lieu: khong phai
+            # so tai khoan. Viet 30.000 hay 30,000 deu la mot so.
+            parts = [_num(p) for p in m.group(0).split()]
+            if len(parts) > 1 and all(v is not None and _key(v) in ev_nums for v in parts):
+                continue
             bad.append(m.group(0).strip())
     return bad
 
