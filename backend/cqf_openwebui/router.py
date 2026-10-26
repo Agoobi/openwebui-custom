@@ -216,7 +216,7 @@ async def get_settings(request: Request, user=Depends(get_admin_user)):
 async def post_settings(request: Request, user=Depends(get_admin_user)):
     patch = await request.json()
     allowed = {k: patch[k] for k in ("enabled", "business", "widget", "allowed_origins", "thu_thap_khach", "fallback_text",
-                                     "min_searches", "max_passages", "max_tool_rounds", "llm") if k in patch}
+                                     "min_searches", "max_passages", "max_tool_rounds", "llm", "tu_van") if k in patch}
     try:
         s = store.save(allowed, parts()["home"])
     except (ValueError, TypeError) as e:
