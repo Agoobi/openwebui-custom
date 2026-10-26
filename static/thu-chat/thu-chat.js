@@ -55,6 +55,7 @@
 	let state = { sid: rid(), turns: [] };
 	let sessions = [];
 	let selected = null, busy = false;
+	const isEnded = () => state.turns.some((t) => t.trace?.ended);
 
 	async function loadSessions() {
 		sessions = (await api('/test/sessions')).sessions || [];
@@ -137,6 +138,19 @@
 			return;
 		}
 		state.turns.forEach((t, i) => box.append(t.role === 'user' ? userMsg(t) : botMsg(t, i)));
+		const ended = isEnded();
+		if (ended) {
+			const n = el('div', 'ended-note');
+			n.append(el('b', '', 'Cuộc trò chuyện đã kết thúc'), el('span', '', 'Khách đã để lại Zalo / số điện thoại, nhân viên tiếp qua Zalo. Trên website khách thấy nút "Trò chuyện mới".'));
+			const again = el('button', 'btn primary', 'Cuộc trò chuyện mới');
+			again.type = 'button';
+			again.addEventListener('click', startNew);
+			n.append(again);
+			box.append(n);
+		}
+		$('text').disabled = ended;
+		$('send').disabled = ended || busy;
+		$('text').placeholder = ended ? 'Cuộc trò chuyện đã kết thúc' : 'Nhập câu hỏi như khách hàng…';
 		$('log').scrollTop = $('log').scrollHeight;
 	}
 
@@ -306,7 +320,7 @@
 						else if (ev.step === 'blocked') bot.trace.blocked = { numbers: ev.numbers, draft: ev.draft };
 						else if (ev.step === 'empty') bot.trace.empty = ev.rounds;
 						else if (ev.step === 'error') bot.trace.error = ev.text;
-					}
+					} else if (ev.type === 'end') bot.trace.ended = true;
 					paint();
 				}
 			}
@@ -319,7 +333,7 @@
 			bot.pending = false;
 			if (!bot.text) bot.text = '_(không có câu trả lời)_';
 			busy = false;
-			$('send').disabled = false;
+			$('send').disabled = isEnded();
 			remember(state.sid);
 			renderLog();
 			select(i, false);

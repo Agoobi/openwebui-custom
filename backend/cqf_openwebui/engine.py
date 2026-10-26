@@ -136,7 +136,10 @@ def rules(s, asked_contact=False):
             "khi tài liệu ghi rõ. "
             + lead + docs
             + "Khách bực, chê câu trả lời: xin lỗi 1 câu ngắn rồi hỏi đúng điều khách cần, hoặc chuyển nhân viên; không "
-            "giải thích dài. Khách cần gặp người thật, khiếu nại, đặt hàng -> chuyen_nhan_vien. Nói với khách là 'chuyển / "
+            "giải thích dài. Khách cần gặp người thật, khiếu nại, đặt hàng -> chuyen_nhan_vien. "
+            "Nhân viên tiếp khách qua ZALO: cần nhân viên / kỹ sư thì xin số Zalo (hoặc số điện thoại) của khách. Khách để "
+            "lại Zalo / số điện thoại: gọi luu_khach_hang, cảm ơn ngắn, nói nhân viên sẽ nhắn Zalo sớm, KHÔNG hỏi thêm gì "
+            "(cuộc chat kết thúc tại đó). Nói với khách là 'chuyển / "
             "báo kỹ sư, nhân viên' thì PHẢI gọi chuyen_nhan_vien ngay trong lượt đó. Không nói nguồn kiểu 'website ghi', "
             "'tài liệu ghi'. "
             f"Khách hỏi em là AI / robot hay người: nói thật em là trợ lý tự động của {ten}, cần thì em chuyển nhân viên "
@@ -147,6 +150,16 @@ def rules(s, asked_contact=False):
 
 
 NO_ANSWER_AGAIN = "Dạ phần này em chưa có thông tin chính xác, em nhờ kỹ sư kiểm tra rồi báo lại anh/chị ạ."  # da xin lien he roi
+END_NOTE = "Cuộc trò chuyện đã kết thúc. Nhân viên sẽ liên hệ anh/chị qua Zalo / điện thoại đã để lại."
+ENDED_REPLY = ("Dạ em đã chuyển thông tin cho nhân viên, nhân viên sẽ nhắn anh/chị qua Zalo / điện thoại sớm ạ. "
+               "Anh/chị cần hỏi việc khác thì bấm \"Trò chuyện mới\" giúp em nhé.")
+
+
+def is_ended(inbox, conv):
+    msgs = (inbox.conversation(conv) or {}).get("messages", [])
+    return any(m.get("role") == "event" and m.get("kind") == "ket_thuc" for m in msgs)
+
+
 def had_handoff(inbox, conv):
     """Cuoc chat da co su kien bao nhan vien (tool hoac tu dong) chua."""
     msgs = (inbox.conversation(conv) or {}).get("messages", [])
@@ -276,7 +289,14 @@ class Engine:
         bi chan / loi), done. Tin cung khach chay lan luot."""
         lock = self._locks.setdefault(conv, asyncio.Lock())
         async with lock:
+            ended = is_ended(self.inbox, conv)
             self.inbox.message(conv, "user", text, page=page)
+            if ended:  # khach da de lai lien he: nhan vien tiep qua Zalo; tin moi van vao Hop thu cho nhan vien doc
+                self.inbox.message(conv, "assistant", ENDED_REPLY)
+                yield {"type": "replace", "text": ENDED_REPLY}
+                yield {"type": "end", "text": END_NOTE}
+                yield {"type": "done"}
+                return
             sent = ""
             try:
                 async for ev in self._stream(s, conv, text):
@@ -303,6 +323,7 @@ class Engine:
         prev_users = [m["text"] for m in hist[:-1] if m["role"] == "user"]
         evidence, user_texts, saved_lead = [], [m["text"] for m in hist if m["role"] == "user"], False
         said, handed_now = "", False  # chu da gui khach luot nay; da goi chuyen_nhan_vien / luu_khach_hang chua
+        got_contact = False  # khach de lai SDT / Zalo luot nay -> ket thuc cuoc chat
         biz = " ".join(str(v) for v in (s.get("business") or {}).values())
 
         # 1. tra kien thuc toi thieu N lan (bang code)
@@ -384,6 +405,7 @@ class Engine:
                     if self.trace:
                         yield {"type": "trace", "step": "tool", "name": name, "args": args, "result": result[:1500]}
                     saved_lead = saved_lead or name == "luu_khach_hang"
+                    got_contact = got_contact or (name == "luu_khach_hang" and bool(args.get("sdt") or args.get("zalo")))
                     handed_now = handed_now or name in ("chuyen_nhan_vien", "luu_khach_hang")
                     messages.append({"role": "tool", "tool_call_id": c["id"], "content": result})
                 continue
@@ -416,8 +438,12 @@ class Engine:
                 self.inbox.event(conv, "lead", {"sdt": phones[0].strip(), **({"ten": name} if name else {}),
                                                 "nhu_cau": (prev_users[-1] if prev_users else text)[:200]})
                 name = None
+        got_contact = got_contact or bool(kb.PHONE.search(text))
         if name:  # khach tu gioi thieu ten: doi ten trong Hop thu (khong doi trang thai)
             self.inbox.update_profile(conv, {"ten": name})
+        if got_contact:  # nhan vien nhan Zalo / goi khach: cuoc chat ket thuc, khach muon hoi tiep thi mo cuoc moi
+            self.inbox.event(conv, "ket_thuc", {"ghi_chu": "Khách đã để lại liên hệ, nhân viên tiếp tục qua Zalo / điện thoại"})
+            yield {"type": "end", "text": END_NOTE}
 
     def _tool(self, conv, name, args, evidence):
         if name == "tim_kien_thuc":

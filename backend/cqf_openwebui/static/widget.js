@@ -119,6 +119,9 @@
     ".send{border:0;width:36px;height:36px;border-radius:10px;background:" + C + ";color:#fff;cursor:pointer;display:grid;place-items:center;flex:none}" +
     ".send:disabled{opacity:.4;cursor:default}.send svg{width:17px;height:17px}" +
     ".note{text-align:center;font-size:11px;color:#9aa3ad;margin-top:6px}" +
+    ".ended{display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;font-size:13px;color:#4b5563;padding:2px 4px}" +
+    ".again{border:0;border-radius:10px;padding:9px 16px;background:" + C + ";color:#fff;font:inherit;font-weight:600;cursor:pointer}" +
+    ".again:focus-visible{outline:2px solid " + C + ";outline-offset:2px}" +
     "@media (max-width:480px){.panel{right:0;bottom:0;width:100vw;max-width:100vw;height:100%;max-height:100%;border-radius:0}.open .launch{display:none}}" +
     "@media (prefers-reduced-motion:reduce){.panel,.launch{transition:none}.caret::after,.dots i,.steps li.now::before{animation:none}}";
 
@@ -134,6 +137,7 @@
     '<div class="log" role="log" aria-live="polite"></div>' +
     '<div class="foot"><div class="box"><textarea rows="1" maxlength="1000" placeholder="Nhập câu hỏi…" aria-label="Câu hỏi"></textarea>' +
     '<button class="send" type="button" aria-label="Gửi" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/></svg></button></div>' +
+    '<div class="ended" hidden><span class="endtext"></span><button class="again" type="button">Trò chuyện mới</button></div>' +
     '<div class="note">Trả lời dựa trên tài liệu của ' + esc(NAME) + "</div></div></div>" +
     '<button class="launch" type="button" aria-label="' + esc(CONF.title || "Tư vấn") + '">' + ICON_CHAT + ICON_X + "</button>";
   root.appendChild(wrap);
@@ -188,6 +192,24 @@
   add("bot", CONF.greeting || "Xin chào! Em có thể giúp gì cho anh/chị ạ?");
   (state.log || []).forEach(function (m) { add(m.r, m.t); });
 
+  // Khach da de lai Zalo / SDT: cuoc chat ket thuc (nhan vien tiep qua Zalo), muon hoi tiep thi mo cuoc moi
+  function showEnded(note) {
+    $(".box").hidden = true;
+    $(".ended").hidden = false;
+    $(".endtext").textContent = note || "Cuộc trò chuyện đã kết thúc. Nhân viên sẽ liên hệ anh/chị qua Zalo / điện thoại đã để lại.";
+    scroll();
+  }
+  $(".again").onclick = function () {
+    state = { vid: rid(), log: [] };
+    save();
+    logEl.innerHTML = "";
+    add("bot", CONF.greeting || "Xin chào! Em có thể giúp gì cho anh/chị ạ?");
+    $(".ended").hidden = true;
+    $(".box").hidden = false;
+    input.focus();
+  };
+  if (state.ended) showEnded(state.ended);
+
   var busy = false;
   function toggle(open) {
     var o = open == null ? !wrap.classList.contains("open") : open;
@@ -216,7 +238,7 @@
     var bubble = row("bot");
     bubble.innerHTML = '<span class="dots"><i></i><i></i><i></i></span>';
     scroll();
-    var reply = "", started = false;
+    var reply = "", started = false, endNote = "";
 
     function finish(finalText) {
       reply = finalText != null ? finalText : reply;
@@ -226,6 +248,7 @@
       if (!steps.length) sb.el.remove();
       if (reply) remember("bot", reply);
       busy = false; resize(); scroll();
+      if (endNote) { state.ended = endNote; save(); showEnded(endNote); }
     }
     function handle(ev) {
       if (ev.type === "status") { steps.push(ev); sb.update(steps, true); scroll(); }
@@ -233,6 +256,7 @@
         if (!started) { started = true; sb.update(steps, false); bubble.classList.add("caret"); }
         reply += ev.text; bubble.innerHTML = md(reply); scroll();
       } else if (ev.type === "replace") { reply = ev.text; bubble.innerHTML = md(reply); }
+      else if (ev.type === "end") endNote = ev.text || "ended";
     }
 
     fetch(API + "/stream", { method: "POST", headers: { "Content-Type": "application/json" },

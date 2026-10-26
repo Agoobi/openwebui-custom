@@ -170,6 +170,8 @@ async def test_stream(request: Request, user=Depends(get_admin_user)):
                         trace["empty"] = ev["rounds"]
                     elif step == "error":
                         trace["error"] = ev["text"]
+                elif kind == "end":
+                    trace["ended"] = True
                 yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
         finally:  # luu ca khi trinh duyet dong giua chung (tra loi den dau luu den do)
             parts()["test_log"].add(user.id, sid, text, answer or "_(bị ngắt)_", trace)

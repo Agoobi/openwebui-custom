@@ -20,7 +20,8 @@
 	const EVENT = {
 		lead: ['Khách để lại thông tin', ''], handoff: ['Khách cần gặp nhân viên', ''],
 		guard_blocked: ['Bot không trả lời được', 'bad'], da_goi: ['Đã gọi', 'acc'], xong: ['Xong', 'acc'],
-		mo_lai: ['Mở lại', 'acc'], sua_thong_tin: ['Sửa thông tin khách', 'acc']
+		mo_lai: ['Mở lại', 'acc'], sua_thong_tin: ['Sửa thông tin khách', 'acc'],
+		ket_thuc: ['Chat kết thúc, nhân viên tiếp qua Zalo / điện thoại', 'acc']
 	};
 	const EDIT_FIELDS = [['ten', 'Tên'], ['sdt', 'SĐT'], ['zalo', 'Zalo'], ['email', 'Email'], ['nhu_cau', 'Nhu cầu']];
 
