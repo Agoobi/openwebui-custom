@@ -16,7 +16,7 @@ DEFAULTS = {
     "min_searches": 4,  # so lan tra kien thuc toi thieu moi cau tra loi (code tu tra, khong phu thuoc model)
     "max_passages": 6,  # so doan tai lieu toi da dua vao 1 lan tra
     "max_tool_rounds": 4,  # so vong model duoc goi tool them
-    "llm": {"base_url": "", "api_key": "", "model": "", "temperature": 0.3},
+    "llm": {"provider": "custom", "base_url": "", "api_key": "", "model": "", "temperature": 0.3},
     "tu_van": {  # cach bot tu van (trang Chatbot > Cach tu van)
         "vai_tro": "so_bo",  # so_bo: hieu nhu cau roi chuyen sale | chi_tiet: tu van thong so theo tai lieu
         "do_dai": "ngan",  # ngan: 1-3 cau | vua: 2-5 cau
@@ -33,6 +33,11 @@ DEFAULTS = {
     },
 }
 SECRET = ("llm", "api_key")
+# Nha cung cap co san: dia chi API chuan OpenAI cua ho. "custom": tu nhap (DeepSeek qua cong rieng, OpenRouter...)
+PROVIDERS = {
+    "gemini": "https://generativelanguage.googleapis.com/v1beta/openai",
+    "openai": "https://api.openai.com/v1",
+}
 
 
 def root() -> Path:
@@ -72,8 +77,14 @@ def save(patch: dict, home: Path = None) -> dict:
     with _lock:
         cur = load(home)
         new = _merge(cur, patch)
+        llm = new["llm"]
+        llm["provider"] = llm.get("provider") if llm.get("provider") in (*PROVIDERS, "custom") else "custom"
+        if llm["provider"] in PROVIDERS:
+            llm["base_url"] = PROVIDERS[llm["provider"]]
         if not ((patch.get("llm") or {}).get("api_key") or "").strip():
-            new["llm"]["api_key"] = cur["llm"]["api_key"]
+            if llm["base_url"].rstrip("/") != (cur["llm"].get("base_url") or "").rstrip("/") and cur["llm"]["api_key"]:
+                raise ValueError("Đổi nhà cung cấp / địa chỉ API thì dán API key của nhà cung cấp mới.")
+            llm["api_key"] = cur["llm"]["api_key"]
         new["min_searches"] = max(1, min(10, int(new.get("min_searches") or 4)))
         new["max_passages"] = max(2, min(12, int(new.get("max_passages") or 6)))
         new["max_tool_rounds"] = max(0, min(8, int(new.get("max_tool_rounds") or 0)))

@@ -37,6 +37,9 @@ section.card > .body { padding: 14px 18px 18px; display: grid; grid-template-col
 .opt:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
 .field .opt input[type=radio] { width: 16px; height: 16px; padding: 0; margin: 2px 0 0; accent-color: var(--accent); flex: none; }
 .opt > div { min-width: 0; }
+.model-row { display: flex; gap: 8px; }
+.model-row input { flex: 1; min-width: 0; }
+@media (max-width: 640px) { .opts[style*="repeat(3"] { grid-template-columns: minmax(0, 1fr) !important; } }
 .opt b { display: block; font-size: 13.5px; }
 .opt span { font-size: 12.5px; color: var(--ink-2); }
 @media (max-width: 640px) { .opts { grid-template-columns: minmax(0, 1fr); } }
@@ -155,8 +158,15 @@ legend.field-legend span { font-size: 12.5px; font-weight: 600; color: var(--ink
   <section class="card">
     <header><h2>Mô hình ngôn ngữ (LLM)</h2><span class="hint">Chatbot gọi thẳng LLM theo chuẩn OpenAI, không qua Hermes: khách không chạm được tới công cụ của trợ lý.</span></header>
     <div class="body">
-      <label class="field wide"><span>Địa chỉ API (base URL)</span><input id="l_base_url" inputmode="url" placeholder="https://…/v1"></label>
-      <label class="field"><span>Model</span><input id="l_model" placeholder="vd deepseek/deepseek-v4.1-flash"></label>
+      <fieldset class="field wide" style="border:0;padding:0;margin:0"><legend class="field-legend"><span>Nhà cung cấp</span></legend>
+        <div class="opts" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+          <label class="opt"><input type="radio" name="provider" value="gemini"><div><b>Google Gemini</b><span>Key lấy ở Google AI Studio.</span></div></label>
+          <label class="opt"><input type="radio" name="provider" value="openai"><div><b>OpenAI</b><span>Key lấy ở platform.openai.com.</span></div></label>
+          <label class="opt"><input type="radio" name="provider" value="custom"><div><b>Khác</b><span>Bất kỳ API chuẩn OpenAI (DeepSeek, OpenRouter, cổng riêng…).</span></div></label>
+        </div>
+      </fieldset>
+      <label class="field wide" id="baseUrlField"><span>Địa chỉ API (base URL)</span><input id="l_base_url" inputmode="url" placeholder="https://…/v1"></label>
+      <div class="field"><span>Model</span><div class="model-row"><input id="l_model" class="input" list="modelList" placeholder="vd gemini-3.5-flash"><button class="btn" id="loadModels" type="button">Lấy danh sách</button></div><datalist id="modelList"></datalist><span class="hint" id="modelMsg"></span></div>
       <label class="field"><span>API key</span><input id="l_api_key" type="password" autocomplete="new-password"></label>
       <label class="field"><span>Độ sáng tạo (0 - 1)</span><input id="l_temperature" type="number" min="0" max="1" step="0.1"></label>
       <div class="field"><span>&nbsp;</span><div><button class="btn" id="testLlm" type="button">Thử kết nối</button> <span class="hint" id="testMsg"></span></div></div>
@@ -203,6 +213,8 @@ legend.field-legend span { font-size: 12.5px; font-weight: 600; color: var(--ink
 		$('link_tai_lieu').value = tv.link_tai_lieu || '';
 		$('ghi_chu').value = tv.ghi_chu || '';
 		$('l_base_url').value = s.llm.base_url || '';
+		document.querySelectorAll('input[name=provider]').forEach((r) => (r.checked = r.value === (s.llm.provider || 'custom')));
+		providerUi();
 		$('l_model').value = s.llm.model || '';
 		$('l_api_key').value = '';
 		$('l_api_key').placeholder = s.llm.has_key ? 'Đã lưu (để trống = giữ nguyên)' : 'Dán API key';
@@ -229,10 +241,21 @@ legend.field-legend span { font-size: 12.5px; font-weight: 600; color: var(--ink
 				link_tai_lieu: $('link_tai_lieu').value.trim(),
 				ghi_chu: $('ghi_chu').value.trim()
 			},
-			llm: { base_url: $('l_base_url').value.trim(), model: $('l_model').value.trim(), api_key: $('l_api_key').value.trim(),
+			llm: { provider: document.querySelector('input[name=provider]:checked')?.value || 'custom', base_url: $('l_base_url').value.trim(), model: $('l_model').value.trim(), api_key: $('l_api_key').value.trim(),
 				temperature: Number($('l_temperature').value || 0.3) }
 		};
 	}
+
+	// Nha cung cap co san: an dia chi API (server tu dien); "Khac" moi nhap tay
+	function providerUi() {
+		const p = document.querySelector('input[name=provider]:checked')?.value || 'custom';
+		$('baseUrlField').hidden = p !== 'custom';
+		$('l_model').placeholder = p === 'gemini' ? 'vd gemini-3.5-flash' : p === 'openai' ? 'vd gpt-5-mini' : 'vd deepseek/deepseek-v4.1-flash';
+	}
+	document.querySelectorAll('input[name=provider]').forEach((r) => r.addEventListener('change', () => {
+		providerUi();
+		$('l_api_key').placeholder = r.value === (current?.llm?.provider || 'custom') && current?.llm?.has_key ? 'Đã lưu (để trống = giữ nguyên)' : 'Dán API key của nhà cung cấp này';
+	}));
 
 	function power() {
 		const on = $('enabled').checked;
@@ -302,6 +325,18 @@ legend.field-legend span { font-size: 12.5px; font-weight: 600; color: var(--ink
 			document.body.append(sc);
 		} else {
 			document.getElementById('cqf-btn').click();
+		}
+	});
+	$('loadModels').addEventListener('click', async () => {
+		if (dirty) await save();
+		$('modelMsg').textContent = 'Đang lấy…';
+		try {
+			const r = await api('/settings/models');
+			if (!r.ok) { $('modelMsg').textContent = `Lỗi: ${r.error}`; return; }
+			$('modelList').replaceChildren(...r.models.map((m) => { const o = el('option'); o.value = m; return o; }));
+			$('modelMsg').textContent = `${r.models.length} model, bấm vào ô Model để chọn`;
+		} catch (e) {
+			$('modelMsg').textContent = `Lỗi: ${e.message}`;
 		}
 	});
 	$('testLlm').addEventListener('click', async () => {

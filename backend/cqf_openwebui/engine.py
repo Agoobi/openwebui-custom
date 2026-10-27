@@ -498,6 +498,8 @@ class Engine:
                         fn = tc.get("function") or {}
                         c["function"]["name"] += fn.get("name") or ""
                         c["function"]["arguments"] += fn.get("arguments") or ""
+                        if tc.get("extra_content"):  # Gemini 3: thought_signature phai gui lai, thieu thi luot sau loi 400
+                            c["extra_content"] = tc["extra_content"]
                     if delta.get("content"):
                         if held is not None:
                             held += delta["content"]

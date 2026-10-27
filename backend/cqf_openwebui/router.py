@@ -226,6 +226,31 @@ async def post_settings(request: Request, user=Depends(get_admin_user)):
     return {"ok": True, "settings": store.public(s)}
 
 
+SKIP_MODELS = ("embed", "tts", "image", "audio", "transcribe", "robotics", "computer-use", "live", "omni", "nano-banana",
+               "whisper", "dall-e", "moderation", "realtime", "search")
+
+
+@router.get("/settings/models")
+async def llm_models(user=Depends(get_admin_user)):
+    """Model chat cua nha cung cap dang luu (nut "Lay danh sach model"): goi {base_url}/models bang key da luu."""
+    import aiohttp
+
+    llm = store.load(parts()["home"])["llm"]
+    if not llm.get("base_url"):
+        return {"ok": False, "error": "Chưa có địa chỉ API"}
+    headers = {"Authorization": f"Bearer {llm['api_key']}"} if llm.get("api_key") else {}
+    try:
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=20)) as http:
+            async with http.get(llm["base_url"].rstrip("/") + "/models", headers=headers) as r:
+                data = await r.json(content_type=None)
+                if r.status != 200:
+                    return {"ok": False, "error": f"HTTP {r.status}: {str(data)[:200]}"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+    ids = sorted({str(m.get("id", "")).removeprefix("models/") for m in data.get("data") or []} - {""})
+    return {"ok": True, "models": [i for i in ids if not any(w in i for w in SKIP_MODELS)]}
+
+
 @router.post("/settings/test")
 async def test_llm(user=Depends(get_admin_user)):
     """Thu goi LLM bang cai dat hien tai (nut "Thu ket noi")."""
