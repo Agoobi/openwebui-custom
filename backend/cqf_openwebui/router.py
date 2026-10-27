@@ -23,6 +23,7 @@ from open_webui.utils.auth import get_admin_user
 from . import kb, store
 from .engine import Engine
 from .inbox import get_inbox
+from . import hermes_llm
 from .knowledge import Knowledge
 from .testlog import TestLog
 
@@ -235,7 +236,10 @@ async def llm_models(user=Depends(get_admin_user)):
     """Model chat cua nha cung cap dang luu (nut "Lay danh sach model"): goi {base_url}/models bang key da luu."""
     import aiohttp
 
-    llm = store.load(parts()["home"])["llm"]
+    try:
+        llm = hermes_llm.effective(store.load(parts()["home"])["llm"])
+    except hermes_llm.HermesLLMError as e:
+        return {"ok": False, "error": str(e)}
     if not llm.get("base_url"):
         return {"ok": False, "error": "Chưa có địa chỉ API"}
     headers = {"Authorization": f"Bearer {llm['api_key']}"} if llm.get("api_key") else {}
@@ -251,12 +255,19 @@ async def llm_models(user=Depends(get_admin_user)):
     return {"ok": True, "models": [i for i in ids if not any(w in i for w in SKIP_MODELS)]}
 
 
+@router.get("/settings/hermes-llm")
+async def hermes_llm_info(user=Depends(get_admin_user)):
+    """Model Hermes dang dung (cho lua chon "Dung LLM cua Hermes"), khong co key."""
+    return hermes_llm.summary()
+
+
 @router.post("/settings/test")
 async def test_llm(user=Depends(get_admin_user)):
     """Thu goi LLM bang cai dat hien tai (nut "Thu ket noi")."""
     s = store.load(parts()["home"])
     try:
-        msg = await parts()["engine"]._llm(s["llm"], [{"role": "user", "content": "Trả lời đúng 1 từ: OK"}])
+        msg = await parts()["engine"]._llm(hermes_llm.effective(s["llm"]),
+                                           [{"role": "user", "content": "Trả lời đúng 1 từ: OK"}])
         return {"ok": True, "reply": (msg.get("content") or "")[:100]}
     except Exception as e:
         return {"ok": False, "error": str(e)[:300]}
@@ -383,4 +394,5 @@ async def status(user=Depends(get_admin_user)):
     s = store.load(p["home"])
     items = p["inbox"].index()["items"]
     return {"ok": True, "enabled": s["enabled"], "todo": sum(1 for it in items if it["status"] == "can_xu_ly"),
-            "notes": sum(1 for n in p["k"].list() if n["enabled"]), "llm_ready": bool(s["llm"]["base_url"] and s["llm"]["model"])}
+            "notes": sum(1 for n in p["k"].list() if n["enabled"]), "llm_ready": hermes_llm.summary()["ok"] if s["llm"].get("provider") == "hermes"
+            else bool(s["llm"]["base_url"] and s["llm"]["model"])}

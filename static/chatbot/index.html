@@ -159,7 +159,8 @@ legend.field-legend span { font-size: 12.5px; font-weight: 600; color: var(--ink
     <header><h2>Mô hình ngôn ngữ (LLM)</h2><span class="hint">Chatbot gọi thẳng LLM theo chuẩn OpenAI, không qua Hermes: khách không chạm được tới công cụ của trợ lý.</span></header>
     <div class="body">
       <fieldset class="field wide" style="border:0;padding:0;margin:0"><legend class="field-legend"><span>Nhà cung cấp</span></legend>
-        <div class="opts" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+        <div class="opts" style="grid-template-columns:repeat(2,minmax(0,1fr))">
+          <label class="opt"><input type="radio" name="provider" value="hermes"><div><b>Dùng LLM của Hermes</b><span id="hermesInfo">Cùng model trợ lý Hermes đang dùng, đổi bên Hermes là chatbot đổi theo.</span></div></label>
           <label class="opt"><input type="radio" name="provider" value="gemini"><div><b>Google Gemini</b><span>Key lấy ở Google AI Studio.</span></div></label>
           <label class="opt"><input type="radio" name="provider" value="openai"><div><b>OpenAI</b><span>Key lấy ở platform.openai.com.</span></div></label>
           <label class="opt"><input type="radio" name="provider" value="custom"><div><b>Khác</b><span>Bất kỳ API chuẩn OpenAI (DeepSeek, OpenRouter, cổng riêng…).</span></div></label>
@@ -250,6 +251,12 @@ legend.field-legend span { font-size: 12.5px; font-weight: 600; color: var(--ink
 	function providerUi() {
 		const p = document.querySelector('input[name=provider]:checked')?.value || 'custom';
 		$('baseUrlField').hidden = p !== 'custom';
+		for (const id of ['l_model', 'l_api_key']) $(id).closest('.field').hidden = p === 'hermes';
+		if (p === 'hermes') {
+			api('/settings/hermes-llm').then((r) => {
+				$('hermesInfo').textContent = r.ok ? `Đang dùng: ${r.model} (${new URL(r.base_url).host}). Đổi bên Hermes là chatbot đổi theo.` : `Lỗi: ${r.error}`;
+			}).catch(() => {});
+		}
 		$('l_model').placeholder = p === 'gemini' ? 'vd gemini-3.5-flash' : p === 'openai' ? 'vd gpt-5-mini' : 'vd deepseek/deepseek-v4.1-flash';
 	}
 	document.querySelectorAll('input[name=provider]').forEach((r) => r.addEventListener('change', () => {

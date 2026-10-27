@@ -78,10 +78,12 @@ def save(patch: dict, home: Path = None) -> dict:
         cur = load(home)
         new = _merge(cur, patch)
         llm = new["llm"]
-        llm["provider"] = llm.get("provider") if llm.get("provider") in (*PROVIDERS, "custom") else "custom"
+        llm["provider"] = llm.get("provider") if llm.get("provider") in (*PROVIDERS, "custom", "hermes") else "custom"
         if llm["provider"] in PROVIDERS:
             llm["base_url"] = PROVIDERS[llm["provider"]]
-        if not ((patch.get("llm") or {}).get("api_key") or "").strip():
+        if llm["provider"] == "hermes":  # dung LLM cua Hermes: giu dia chi / key rieng da luu de sau quay lai
+            llm["base_url"], llm["api_key"] = cur["llm"].get("base_url", ""), cur["llm"].get("api_key", "")
+        elif not ((patch.get("llm") or {}).get("api_key") or "").strip():
             if llm["base_url"].rstrip("/") != (cur["llm"].get("base_url") or "").rstrip("/") and cur["llm"]["api_key"]:
                 raise ValueError("Đổi nhà cung cấp / địa chỉ API thì dán API key của nhà cung cấp mới.")
             llm["api_key"] = cur["llm"]["api_key"]

@@ -7,7 +7,7 @@ import asyncio, json, logging, re
 
 import aiohttp
 
-from . import kb
+from . import hermes_llm, kb
 
 logger = logging.getLogger("cqf_openwebui.engine")
 
@@ -334,7 +334,7 @@ class Engine:
             yield {"type": "done"}
 
     async def _stream(self, s, conv, text):
-        llm = s.get("llm") or {}
+        llm = hermes_llm.effective(s.get("llm"))  # "Dung LLM cua Hermes": doc cau hinh Hermes moi luot
         if not (llm.get("base_url") and llm.get("model")):
             raise RuntimeError("Chưa cấu hình LLM trên trang Chatbot")
         hist = [m for m in (self.inbox.conversation(conv) or {}).get("messages", []) if m["role"] in ("user", "assistant")]
