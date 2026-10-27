@@ -175,6 +175,20 @@ HANDED_OFF = re.compile(r"(đã|em) báo (nhân viên|kỹ sư)", re.I)
 ASKED_CONTACT = re.compile(r"(xin|để lại|cho em)[^.?!\n]{0,30}(zalo|số điện thoại|\bsđt\b|email)", re.I)
 
 
+LLM_RETRIES = 2
+
+
+def retry_delay(text, retry_after, attempt):
+    """Giay cho truoc khi goi lai sau 429: Retry-After, hoac retryDelay Google tra ("12s"); toi da 20s."""
+    m = re.search(r'retryDelay"\s*:\s*"(\d+(?:\.\d+)?)s', text or "")
+    for v in (retry_after, m and m.group(1)):
+        try:
+            return min(20.0, max(1.0, float(v)))
+        except (TypeError, ValueError):
+            pass
+    return 5.0 * (attempt + 1)
+
+
 TEXT_CALL_START = "<｜"
 TEXT_INVOKE = re.compile(r"<｜DSML｜\s*invoke\s+name=\"([^\"]+)\"\s*>(.*?)</｜DSML｜\s*invoke\s*>", re.S)
 TEXT_PARAM = re.compile(r"<｜DSML｜\s*parameter\s+name=\"([^\"]+)\"([^>]*)>(.*?)</｜DSML｜\s*parameter\s*>", re.S)
@@ -478,7 +492,15 @@ class Engine:
         url = llm["base_url"].rstrip("/") + "/chat/completions"
         calls, held, carry = {}, None, ""  # held: chu tu "<｜" tro di, co the la tool call model viet thanh chu
         async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=120, sock_read=60)) as http:
-            async with http.post(url, json=body, headers=headers) as r:
+            for attempt in range(LLM_RETRIES + 1):  # 429 (vuot gioi han / phut, vd Gemini goi mien phi): cho roi goi lai
+                r = await http.post(url, json=body, headers=headers)
+                if r.status != 429 or attempt == LLM_RETRIES:
+                    break
+                wait = retry_delay(await r.text(), r.headers.get("Retry-After"), attempt)
+                r.release()
+                logger.info("[cqf] LLM 429, doi %ss roi goi lai", wait)
+                await asyncio.sleep(wait)
+            async with r:
                 if r.status != 200:
                     raise RuntimeError(f"LLM HTTP {r.status}: {(await r.text())[:200]}")
                 async for raw in r.content:
