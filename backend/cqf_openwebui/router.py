@@ -276,6 +276,14 @@ async def post_settings(request: Request, user=Depends(get_admin_user)):
     allowed = {k: patch[k] for k in ("enabled", "business", "widget", "allowed_origins", "thu_thap_khach", "fallback_text",
                                      "min_searches", "max_passages", "max_tool_rounds", "llm", "tu_van", "zalo")
                if k in patch}
+    oa_id = str((allowed.get("zalo") or {}).get("oa_id") or "").strip()
+    try:
+        app_id = zalo.app_credentials()[0]
+    except zalo.ZaloError:
+        app_id = ""
+    if oa_id and oa_id == app_id:
+        _err(ValueError("Ô OA ID đang là App ID của app Zalo. OA ID là mã của Official Account (xem trong oa.zalo.me "
+                        "hoặc link zalo.me/<OA ID> trên website)."))
     try:
         s = store.save(allowed, parts()["home"])
     except (ValueError, TypeError) as e:
