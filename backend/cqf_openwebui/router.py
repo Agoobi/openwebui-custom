@@ -152,8 +152,8 @@ async def zalo_webhook(request: Request):
     if len(raw) > 1024 * 1024:
         return JSONResponse({"ok": False}, 413)
     body = zalo.verify(raw, request.headers, z["oa_secret_key"])
-    if body is None:
-        return JSONResponse({"ok": False}, 401)
+    if body is None:  # khong co / sai chu ky (vd Zalo "Kiem tra" webhook): bo qua, nhung tra 200 (Zalo chi nhan 200)
+        return {"ok": False}
     ev = zalo.parse(body)
     st = parts()["zalo_state"]
     if ev["kind"] == "other" or (z["oa_id"] and ev.get("oa_id") and ev["oa_id"] != z["oa_id"]):
