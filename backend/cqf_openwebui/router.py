@@ -11,8 +11,9 @@ Quan tri (dang nhap Open WebUI, vai tro admin; dung get_admin_user cua Open WebU
     POST /test/stream                trang "Thu chatbot": nhu /webchat/stream + su kien trace, tin luu rieng (khong vao
                                      Hop thu), chay ca khi chatbot dang tat
     GET /test/sessions, GET /test/session, DELETE /test/session   lich su thu (tren server, theo quan tri vien)
+    POST /zalo/webhook               kenh Zalo OA (Zalo goi, kiem chu ky); GET /settings/zalo (quan tri)
 """
-import json, tempfile, time
+import asyncio, json, logging, tempfile, time
 from collections import defaultdict, deque
 from pathlib import Path
 
@@ -26,8 +27,10 @@ from .inbox import get_inbox
 from . import hermes_llm
 from .knowledge import Knowledge
 from .testlog import TestLog
+from . import zalo
 
 router = APIRouter()
+logger = logging.getLogger("cqf_openwebui.router")
 STATIC = Path(__file__).parent / "static"
 VID_OK = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-")
 RATE_VID = (20, 300)  # toi da 20 tin / 5 phut / khach
@@ -44,7 +47,7 @@ def parts():
         box = get_inbox(home, {})
         test_box = get_inbox(home / "test", {})  # tin thu cua quan tri vien: khong lan vao Hop thu
         _parts.update(home=home, k=k, inbox=box, engine=Engine(k, box), test_engine=Engine(k, test_box, trace=True),
-                      test_log=TestLog(home))
+                      test_log=TestLog(home), zalo_state=zalo.ZaloState(home))
     return _parts
 
 
@@ -135,6 +138,58 @@ async def chat_stream(request: Request):
                              headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
 
 
+# ---------------------------------------------------------------- kenh Zalo OA (cong khai, Zalo goi)
+
+_zalo_tasks = set()
+
+
+@router.post("/zalo/webhook")
+async def zalo_webhook(request: Request):
+    """Zalo can 200 nhanh: kiem chu ky, ghi nhan, tra loi o tac vu nen."""
+    s = store.load(parts()["home"])
+    z = s["zalo"]
+    raw = await request.body()
+    if len(raw) > 1024 * 1024:
+        return JSONResponse({"ok": False}, 413)
+    body = zalo.verify(raw, request.headers, z["oa_secret_key"])
+    if body is None:
+        return JSONResponse({"ok": False}, 401)
+    ev = zalo.parse(body)
+    st = parts()["zalo_state"]
+    if ev["kind"] == "other" or (z["oa_id"] and ev.get("oa_id") and ev["oa_id"] != z["oa_id"]):
+        st.first_time("")  # ghi lan cuoi nhan su kien (trang Chatbot hien "da ket noi")
+        return {"ok": True}
+    if not st.first_time(f"{ev['kind']}:{ev['msg_id']}"):
+        return {"ok": True}  # Zalo gui lai su kien da xu ly
+    conv = f"zalo:{ev['user_id']}"
+    if ev["kind"] == "staff":
+        if not st.is_bot_message(ev["msg_id"], ev["user_id"], zalo.plain(ev["text"])):
+            st.staff_replied(ev["user_id"])
+            parts()["inbox"].message(conv, "assistant", f"[Nhân viên trả lời trong Zalo] {ev['text']}"[:2000])
+        return {"ok": True}
+    if not z["enabled"]:
+        return {"ok": True}
+    task = asyncio.create_task(_zalo_answer(s, ev, conv))
+    _zalo_tasks.add(task)
+    task.add_done_callback(_zalo_tasks.discard)
+    return {"ok": True}
+
+
+async def _zalo_answer(s, ev, conv):
+    st, box = parts()["zalo_state"], parts()["inbox"]
+    if st.staff_active(ev["user_id"], s["zalo"]["pause_hours"]) or ev["kind"] != "user_text":
+        # nhan vien dang tiep (hoac khach gui anh / file): chi luu tin vao Hop thu, bot khong tra loi
+        box.message(conv, "user", ev["text"] or "[Khách gửi ảnh / tệp]")
+        return
+    try:
+        reply = await parts()["engine"].answer(s, conv, ev["text"][:1000])
+        ids = await zalo.send_text(ev["oa_id"] or s["zalo"]["oa_id"], ev["user_id"], reply, st)
+        st.mark_sent(ids)
+    except Exception as e:
+        logger.warning("[cqf] zalo: khong tra loi duoc: %s", e)
+        box.event(conv, "guard_blocked", {"ly_do": "Không gửi được tin Zalo", "tom_tat": str(e)[:200]})
+
+
 # ---------------------------------------------------------------- thu chatbot (quan tri vien)
 
 @router.post("/test/stream")
@@ -219,7 +274,8 @@ async def get_settings(request: Request, user=Depends(get_admin_user)):
 async def post_settings(request: Request, user=Depends(get_admin_user)):
     patch = await request.json()
     allowed = {k: patch[k] for k in ("enabled", "business", "widget", "allowed_origins", "thu_thap_khach", "fallback_text",
-                                     "min_searches", "max_passages", "max_tool_rounds", "llm", "tu_van") if k in patch}
+                                     "min_searches", "max_passages", "max_tool_rounds", "llm", "tu_van", "zalo")
+               if k in patch}
     try:
         s = store.save(allowed, parts()["home"])
     except (ValueError, TypeError) as e:
@@ -253,6 +309,21 @@ async def llm_models(user=Depends(get_admin_user)):
         return {"ok": False, "error": str(e)[:200]}
     ids = sorted({str(m.get("id", "")).removeprefix("models/") for m in data.get("data") or []} - {""})
     return {"ok": True, "models": [i for i in ids if not any(w in i for w in SKIP_MODELS)]}
+
+
+@router.get("/settings/zalo")
+async def zalo_info(request: Request, user=Depends(get_admin_user)):
+    """Trang Chatbot > Kenh Zalo OA: dia chi webhook, token OA co dung duoc khong, lan cuoi Zalo goi toi."""
+    s = store.load(parts()["home"])
+    base = f"{request.headers.get('x-forwarded-proto', request.url.scheme)}://{request.headers.get('host', '')}"
+    info = {"ok": True, "webhook": f"{base}/api/v1/cqf/zalo/webhook", "last_event": parts()["zalo_state"].last_event()}
+    if s["zalo"]["oa_id"]:
+        try:
+            await asyncio.to_thread(zalo.access_token, s["zalo"]["oa_id"])
+            info["token"] = "ok"
+        except zalo.ZaloError as e:
+            info["token"] = str(e)
+    return info
 
 
 @router.get("/settings/hermes-llm")

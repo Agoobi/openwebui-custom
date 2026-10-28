@@ -17,6 +17,12 @@ DEFAULTS = {
     "max_passages": 6,  # so doan tai lieu toi da dua vao 1 lan tra
     "max_tool_rounds": 4,  # so vong model duoc goi tool them
     "llm": {"provider": "custom", "base_url": "", "api_key": "", "model": "", "temperature": 0.3},
+    "zalo": {  # kenh Zalo OA: khach nhan OA -> bot tra loi trong Zalo
+        "enabled": False,
+        "oa_id": "",
+        "oa_secret_key": "",  # developers.zalo.me > app > Webhook > OA Secret Key (kiem chu ky webhook)
+        "pause_hours": 12,  # nhan vien vua tra loi khach trong Zalo -> bot im voi khach do bao nhieu gio
+    },
     "tu_van": {  # cach bot tu van (trang Chatbot > Cach tu van)
         "vai_tro": "so_bo",  # so_bo: hieu nhu cau roi chuyen sale | chi_tiet: tu van thong so theo tai lieu
         "do_dai": "ngan",  # ngan: 1-3 cau | vua: 2-5 cau
@@ -92,6 +98,13 @@ def save(patch: dict, home: Path = None) -> dict:
         new["max_tool_rounds"] = max(0, min(8, int(new.get("max_tool_rounds") or 0)))
         new["allowed_origins"] = sorted({o.strip().rstrip("/") for o in new.get("allowed_origins") or []
                                          if str(o).strip().startswith(("https://", "http://"))})
+        z = new["zalo"]
+        z["enabled"] = bool(z.get("enabled"))
+        z["oa_id"] = "".join(ch for ch in str(z.get("oa_id") or "") if ch.isdigit())[:30]
+        if not str((patch.get("zalo") or {}).get("oa_secret_key") or "").strip():
+            z["oa_secret_key"] = cur["zalo"]["oa_secret_key"]  # de trong = giu khoa cu
+        z["oa_secret_key"] = str(z["oa_secret_key"]).strip()[:200]
+        z["pause_hours"] = max(0, min(168, int(z.get("pause_hours") or 0)))
         tv = new["tu_van"]
         tv["vai_tro"] = tv.get("vai_tro") if tv.get("vai_tro") in ("so_bo", "chi_tiet") else "so_bo"
         tv["do_dai"] = tv.get("do_dai") if tv.get("do_dai") in ("ngan", "vua") else "ngan"
@@ -114,4 +127,5 @@ def public(s: dict) -> dict:
     out = copy.deepcopy(s)
     key = out["llm"].pop("api_key", "")
     out["llm"]["has_key"] = bool(key)
+    out["zalo"]["has_secret"] = bool(out["zalo"].pop("oa_secret_key", ""))
     return out

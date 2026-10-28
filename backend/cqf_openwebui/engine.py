@@ -97,7 +97,13 @@ ROLE = {
 }
 
 
-def rules(s, asked_contact=False):
+ZALO_RULES = ("KÊNH ZALO: khách đang nhắn qua Zalo OA của công ty, nhân viên sẽ trả lời ngay trong cuộc trò chuyện Zalo "
+              "này. KHÔNG xin số Zalo. Cần nhân viên / kỹ sư -> gọi chuyen_nhan_vien và nói nhân viên sẽ vào trả lời "
+              "ngay trong Zalo này; chỉ xin số điện thoại khi khách muốn được gọi điện. Zalo không hiện Markdown: "
+              "không dùng bảng, không in đậm, liệt kê bằng dấu '•'. ")
+
+
+def rules(s, asked_contact=False, channel="web"):
     biz = s.get("business") or {}
     tv = s.get("tu_van") or {}
     ten = biz.get("ten") or "doanh nghiệp"
@@ -122,7 +128,8 @@ def rules(s, asked_contact=False):
     return (f"Bạn là trợ lý tự động trả lời khách trên website của {ten}. Nói như một nhân viên tư vấn có kinh nghiệm đang "
             "nhắn tin: tự nhiên, thân thiện, đi thẳng vào ý, không văn mẫu. Xưng 'em'; gọi 'anh/chị' cho tới khi khách "
             "tự xưng ('anh', 'chị', 'em', tên) thì gọi đúng như vậy, không viết 'anh/chị' nữa. Tiếng Việt có dấu. "
-            + LENGTH.get(tv.get("do_dai"), LENGTH["ngan"]) + " Được dùng Markdown (**đậm**, gạch đầu dòng) khi giúp dễ đọc. "
+            + LENGTH.get(tv.get("do_dai"), LENGTH["ngan"])
+            + (" " + ZALO_RULES if channel == "zalo" else " Được dùng Markdown (**đậm**, gạch đầu dòng) khi giúp dễ đọc. ")
             + ROLE.get(tv.get("vai_tro"), ROLE["so_bo"]) + " "
             + (f"Câu hỏi tìm hiểu nhu cầu: {' | '.join(questions)}. " if questions else "")
             + "NGỮ CẢNH: trả lời đúng câu khách đang hỏi. Khách chuyển sang sản phẩm / chủ đề khác thì coi là câu hỏi mới, "
@@ -140,9 +147,11 @@ def rules(s, asked_contact=False):
             + lead + docs
             + "Khách bực, chê câu trả lời: xin lỗi 1 câu ngắn rồi hỏi đúng điều khách cần, hoặc chuyển nhân viên; không "
             "giải thích dài. Khách cần gặp người thật, khiếu nại, đặt hàng -> chuyen_nhan_vien. "
-            "Nhân viên tiếp khách qua ZALO: cần nhân viên / kỹ sư thì xin số Zalo (hoặc số điện thoại) của khách. Khách để "
-            "lại Zalo / số điện thoại: gọi luu_khach_hang, cảm ơn ngắn, nói nhân viên sẽ nhắn Zalo sớm, KHÔNG hỏi thêm gì "
-            "(cuộc chat kết thúc tại đó). Nói với khách là 'chuyển / "
+            + ("" if channel == "zalo" else
+               "Nhân viên tiếp khách qua ZALO: cần nhân viên / kỹ sư thì xin số Zalo (hoặc số điện thoại) của khách. Khách "
+               "để lại Zalo / số điện thoại: gọi luu_khach_hang, cảm ơn ngắn, nói nhân viên sẽ nhắn Zalo sớm, KHÔNG hỏi "
+               "thêm gì (cuộc chat kết thúc tại đó). ")
+            + "Nói với khách là 'chuyển / "
             "báo kỹ sư, nhân viên' thì PHẢI gọi chuyen_nhan_vien ngay trong lượt đó. Không nói nguồn kiểu 'website ghi', "
             "'tài liệu ghi'. "
             f"Khách hỏi em là AI / robot hay người: nói thật em là trợ lý tự động của {ten}, cần thì em chuyển nhân viên "
@@ -371,7 +380,8 @@ class Engine:
 
         asked = any(m["role"] == "assistant" and ASKED_CONTACT.search(m["text"].replace("*", ""))
                     for m in hist[:-1])
-        messages = [{"role": "system", "content": rules(s, asked) + "\n\n[TÀI LIỆU DOANH NGHIỆP]\n" + docs}]
+        channel = conv.split(":", 1)[0]
+        messages = [{"role": "system", "content": rules(s, asked, channel) + "\n\n[TÀI LIỆU DOANH NGHIỆP]\n" + docs}]
         messages += [{"role": m["role"], "content": m["text"]} for m in hist[-12:]]
         handed = any(m["role"] == "assistant" and HANDED_OFF.search(m["text"]) for m in hist[:-1])
         if asked or handed:  # nhac sat cau tra loi (model hay quen quy tac dau prompt sau vai luot)
@@ -460,7 +470,7 @@ class Engine:
         got_contact = got_contact or bool(kb.PHONE.search(text))
         if name:  # khach tu gioi thieu ten: doi ten trong Hop thu (khong doi trang thai)
             self.inbox.update_profile(conv, {"ten": name})
-        if got_contact:  # nhan vien nhan Zalo / goi khach: cuoc chat ket thuc, khach muon hoi tiep thi mo cuoc moi
+        if got_contact and channel != "zalo":  # web: nhan vien nhan Zalo / goi khach, cuoc chat ket thuc
             self.inbox.event(conv, "ket_thuc", {"ghi_chu": "Khách đã để lại liên hệ, nhân viên tiếp tục qua Zalo / điện thoại"})
             yield {"type": "end", "text": END_NOTE}
 
