@@ -1,23 +1,23 @@
 """Kenh Zalo OA: khach nhan tin cho OA -> chatbot tra loi ngay trong Zalo (tin tu van /v3.0/oa/message/cs).
 
 Webhook: app Zalo (developers.zalo.me) goi POST /api/v1/cqf/zalo/webhook, chu ky
-X-ZEvent-Signature = sha256(app_id + body + timestamp + OA Secret Key). Token OA dung CHUNG voi skill dang bai
-viet-bai-zalo-oa cua Hermes (cung VPS): goi zalo_tokens.access_token cua skill do (khoa file, tu lam moi). Refresh
-token Zalo chi dung 1 lan, hai noi tu giu token rieng se lam hong nhau.
+X-ZEvent-Signature = sha256(app_id + body + timestamp + OA Secret Key). App ID, App Secret, OA Secret Key nam trong
+cai dat chatbot (trang Chatbot > Kenh Zalo OA). Token OA o <cqf>/zalo/tokens.json, khoa file khi lam moi: refresh
+token Zalo chi dung 1 lan, nen cong cu khac dung cung OA (vd skill dang bai Zalo cua Hermes) phai doc chung file nay
+(cung dinh dang, cung file khoa tokens.lock), khong giu ban rieng.
 
 Nhan vien tra loi khach trong Zalo (su kien oa_send_text khong phai tin bot vua gui) -> bot ngung voi khach do
 trong N gio (cai dat), de nhan vien noi chuyen.
 """
-import asyncio, hashlib, hmac, importlib.util, json, logging, re, threading, time
+import asyncio, fcntl, hashlib, hmac, json, logging, os, re, threading, time, urllib.error, urllib.parse, urllib.request
 from pathlib import Path
 
 import aiohttp
 
-from . import hermes_llm
-
 logger = logging.getLogger("cqf_openwebui.zalo")
 API = "https://openapi.zalo.me"
-SKILL_TOKENS = hermes_llm.HERMES_HOME / "skills/social-media/viet-bai-zalo-oa/scripts/zalo_tokens.py"
+OAUTH = "https://oauth.zaloapp.com/v4/oa/access_token"
+REFRESH_MARGIN = 300  # lam moi truoc khi het han 5 phut
 MAX_TEXT = 2000  # Zalo cat tin dai hon
 
 
@@ -25,49 +25,104 @@ class ZaloError(RuntimeError):
     pass
 
 
-# ---------------------------------------------------------------- token (dung chung voi Hermes)
+# ---------------------------------------------------------------- token OA (<cqf>/zalo/tokens.json, khoa file)
+# Dinh dang: {"app_id": "...", "oas": {"<oa_id>": {"access_token", "refresh_token", "expires_at", "updated_at"}}}
 
-_mod = None
+class _Locked:
+    def __init__(self, home):
+        self.file = Path(home) / "zalo" / "tokens.json"
+
+    def __enter__(self):
+        self.file.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        self.lock = open(self.file.with_suffix(".lock"), "w")
+        fcntl.flock(self.lock, fcntl.LOCK_EX)
+        try:
+            self.data = json.loads(self.file.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            self.data = {}
+        self.data.setdefault("oas", {})
+        return self
+
+    def save(self):
+        tmp = self.file.with_suffix(".tmp")
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(self.data, fh, ensure_ascii=False, indent=2)
+        tmp.replace(self.file)
+
+    def __exit__(self, *exc):
+        fcntl.flock(self.lock, fcntl.LOCK_UN)
+        self.lock.close()
 
 
-def _tokens_module():
-    global _mod
-    if _mod is None:
-        if not SKILL_TOKENS.exists():
-            raise ZaloError(f"Chưa có skill viet-bai-zalo-oa của Hermes ({SKILL_TOKENS}) để lấy token OA.")
-        spec = importlib.util.spec_from_file_location("cqf_zalo_tokens", SKILL_TOKENS)
-        _mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(_mod)
-    return _mod
+def app_credentials(z):
+    if not z.get("app_id") or not z.get("app_secret"):
+        raise ZaloError("Chưa nhập App ID / App Secret của app Zalo (trang Chatbot > Kênh Zalo OA).")
+    return z["app_id"], z["app_secret"]
 
 
-def app_credentials():
-    env = {**hermes_llm._dotenv(hermes_llm.HERMES_HOME / ".env"),
-           **hermes_llm._dotenv(hermes_llm.HERMES_HOME / ".coquifly.env")}
-    app_id, secret = env.get("ZALO_APP_ID", ""), env.get("ZALO_APP_SECRET", "")
-    if not app_id or not secret:
-        raise ZaloError("Hermes chưa có ZALO_APP_ID / ZALO_APP_SECRET (file .env của Hermes).")
-    return app_id, secret
+def _store(entry, data):
+    entry["access_token"] = data["access_token"]
+    entry["refresh_token"] = data.get("refresh_token") or entry.get("refresh_token")
+    entry["expires_at"] = int(time.time()) + int(data.get("expires_in") or 3600)
+    entry["updated_at"] = int(time.time())
 
 
-def access_token(oa_id):
-    app_id, secret = app_credentials()
-    try:
-        return _tokens_module().access_token(str(oa_id), app_id=app_id, secret=secret)
-    except Exception as e:  # ZaloAuthError cua skill
-        raise ZaloError(f"Không lấy được token OA: {e}")
+def import_tokens(home, z, access, refresh):
+    """Nap cap token lay o developers.zalo.me (API Explorer, loai OA access token). Thieu access: lam moi ngay."""
+    if not z.get("oa_id") or not refresh:
+        raise ZaloError("Cần OA ID và refresh token.")
+    with _Locked(home) as s:
+        s.data["app_id"] = z.get("app_id") or s.data.get("app_id", "")
+        entry = s.data["oas"].setdefault(str(z["oa_id"]), {})
+        _store(entry, {"access_token": access or "", "refresh_token": refresh, "expires_in": 3600 if access else 0})
+        s.save()
+    access_token(home, z, force=not access)
+
+
+def access_token(home, z, force=False):
+    """Access token con han; sap het han thi lam moi (giu khoa file trong luc lam moi)."""
+    app_id, secret = app_credentials(z)
+    with _Locked(home) as s:
+        entry = s.data["oas"].get(str(z.get("oa_id")))
+        if not entry or not entry.get("refresh_token"):
+            raise ZaloError("Chưa có token OA: nạp access token + refresh token ở trang Chatbot > Kênh Zalo OA.")
+        if not force and entry.get("access_token") and entry.get("expires_at", 0) - time.time() > REFRESH_MARGIN:
+            return entry["access_token"]
+        body = urllib.parse.urlencode({"refresh_token": entry["refresh_token"], "app_id": app_id,
+                                       "grant_type": "refresh_token"}).encode()
+        req = urllib.request.Request(OAUTH, body, method="POST", headers={
+            "Content-Type": "application/x-www-form-urlencoded", "secret_key": secret})
+        try:
+            with urllib.request.urlopen(req, timeout=30) as r:
+                data = json.loads(r.read())
+        except (urllib.error.URLError, OSError, ValueError) as e:
+            raise ZaloError(f"Không làm mới được token OA: {e}")
+        if not data.get("access_token"):
+            raise ZaloError(f"Zalo không làm mới token ({data.get('error_name') or data.get('error')}): refresh token "
+                            "hết hạn (3 tháng không dùng) hoặc đã bị dùng ở nơi khác. Nạp lại token mới.")
+        _store(entry, data)
+        s.save()
+        return entry["access_token"]
+
+
+def token_info(home, z):
+    with _Locked(home) as s:
+        e = s.data["oas"].get(str(z.get("oa_id"))) or {}
+    return {"has_token": bool(e.get("refresh_token")), "expires_at": e.get("expires_at", 0),
+            "updated_at": e.get("updated_at", 0)}
 
 
 # ---------------------------------------------------------------- webhook
 
-def verify(raw: bytes, headers, oa_secret_key: str):
-    """Su kien da kiem chu ky, hoac None (sai chu ky / sai dinh dang)."""
-    if not oa_secret_key:
+def verify(raw: bytes, headers, z):
+    """Su kien da kiem chu ky, hoac None (sai chu ky / sai dinh dang / chua cai App ID, OA Secret Key)."""
+    oa_secret_key, app_id = z.get("oa_secret_key"), z.get("app_id")
+    if not oa_secret_key or not app_id:
         return None
     try:
         body = json.loads(raw)
-        app_id, _ = app_credentials()
-    except (ValueError, ZaloError):
+    except ValueError:
         return None
     given = (headers.get("x-zevent-signature") or "").lower().removeprefix("mac=").strip()
     data = f"{app_id}{raw.decode('utf-8', 'replace')}{body.get('timestamp', '')}{oa_secret_key}"
@@ -125,9 +180,9 @@ def chunks(text, limit=MAX_TEXT):
     return parts + ([cur] if cur else [])
 
 
-async def send_text(oa_id, user_id, text, state=None):
+async def send_text(home, z, user_id, text, state=None):
     """Gui tin tu van; tra danh sach message_id (de nhan ra tin cua bot trong su kien oa_send_text)."""
-    token = await asyncio.to_thread(access_token, oa_id)
+    token = await asyncio.to_thread(access_token, home, z)
     parts = chunks(plain(text))
     if state:
         state.sending(user_id, parts)

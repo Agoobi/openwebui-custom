@@ -136,11 +136,19 @@ legend.field-legend span { font-size: 12.5px; font-weight: 600; color: var(--ink
     <div class="body">
       <div class="field wide"><label class="switch"><input type="checkbox" id="z_enabled"><span class="track"></span><span>Bot trả lời tin nhắn Zalo OA</span></label></div>
       <label class="field"><span>OA ID</span><input id="z_oa_id" inputmode="numeric" placeholder="vd 999428734605545969"></label>
-      <label class="field"><span>OA Secret Key</span><input id="z_secret" type="password" autocomplete="new-password"></label>
+      <label class="field"><span>OA Secret Key (trang Webhook)</span><input id="z_secret" type="password" autocomplete="new-password"></label>
+      <label class="field"><span>App ID (ID ứng dụng)</span><input id="z_app_id" inputmode="numeric"></label>
+      <label class="field"><span>App Secret (khóa bí mật của ứng dụng)</span><input id="z_app_secret" type="password" autocomplete="new-password"></label>
+      <details class="field wide"><summary>Nạp token OA (lần đầu, hoặc khi token hết hạn)</summary>
+        <p class="hint">developers.zalo.me → Công cụ → API Explorer → chọn app, loại <b>OA Access Token</b>, chọn OA → Lấy Access Token. Chép cả 2 token vào đây (chỉ dùng để nạp, không hiện lại). Refresh token chỉ dùng được 1 lần: đừng dùng cặp token này ở nơi khác.</p>
+        <label class="field"><span>Access token</span><input id="z_access" type="password" autocomplete="off"></label>
+        <label class="field"><span>Refresh token</span><input id="z_refresh" type="password" autocomplete="off"></label>
+        <div><button class="btn" id="z_import" type="button">Nạp token</button> <span class="hint" id="z_import_msg"></span></div>
+      </details>
       <label class="field"><span>Nhân viên trả lời thì bot im trong</span><span class="num"><input type="number" id="z_pause" min="0" max="168" class="input"><span class="hint">giờ (0 = không im)</span></span></label>
       <div class="field"><span>Trạng thái</span><div class="hint" id="z_status">…</div></div>
       <div class="field wide"><span>Webhook (dán vào app Zalo)</span><div class="embed-code"><code id="z_webhook">…</code><button class="btn" id="z_copy" type="button">Chép</button></div>
-        <span class="hint">developers.zalo.me → app của OA → Webhook: dán địa chỉ này, bật sự kiện "Người dùng gửi tin nhắn văn bản" và "OA gửi tin nhắn văn bản", chép OA Secret Key vào ô trên. Token OA dùng chung với skill đăng bài Zalo của Hermes.</span></div>
+        <span class="hint">developers.zalo.me → app của OA → Webhook: dán địa chỉ này, bật sự kiện "Người dùng gửi tin nhắn văn bản" và "OA gửi tin nhắn văn bản", chép OA Secret Key vào ô trên.</span></div>
     </div>
   </section>
 
@@ -225,6 +233,9 @@ legend.field-legend span { font-size: 12.5px; font-weight: 600; color: var(--ink
 		$('z_pause').value = z.pause_hours ?? 12;
 		$('z_secret').value = '';
 		$('z_secret').placeholder = z.has_secret ? 'Đã lưu (để trống = giữ nguyên)' : 'Dán OA Secret Key';
+		$('z_app_id').value = z.app_id || '';
+		$('z_app_secret').value = '';
+		$('z_app_secret').placeholder = z.has_app_secret ? 'Đã lưu (để trống = giữ nguyên)' : 'Dán khóa bí mật của ứng dụng';
 		zaloStatus();
 		const tv = s.tu_van || {};
 		for (const k of ['vai_tro', 'do_dai', 'xin_lien_he']) {
@@ -257,6 +268,7 @@ legend.field-legend span { font-size: 12.5px; font-weight: 600; color: var(--ink
 			thu_thap_khach: [...document.querySelectorAll('[data-field]:checked')].map((cb) => cb.value),
 			fallback_text: $('fallback_text').value.trim(),
 			zalo: { enabled: $('z_enabled').checked, oa_id: $('z_oa_id').value.trim(), oa_secret_key: $('z_secret').value.trim(),
+				app_id: $('z_app_id').value.trim(), app_secret: $('z_app_secret').value.trim(),
 				pause_hours: Number($('z_pause').value || 0) },
 			tu_van: {
 				...Object.fromEntries(['vai_tro', 'do_dai', 'xin_lien_he'].map((k) => [k, document.querySelector(`input[name=${k}]:checked`)?.value])),
@@ -361,11 +373,23 @@ legend.field-legend span { font-size: 12.5px; font-weight: 600; color: var(--ink
 			const r = await api('/settings/zalo');
 			$('z_webhook').textContent = r.webhook;
 			const parts = [];
-			if (r.token) parts.push(r.token === 'ok' ? 'Token OA dùng được' : `Token OA: ${r.token}`);
+			if (r.token) parts.push(r.token === 'ok' ? `Token OA dùng được (làm mới lúc ${new Date(r.updated_at * 1000).toLocaleString('vi-VN')})` : `Token OA: ${r.token}`);
 			parts.push(r.last_event ? `Zalo gọi tới lần cuối ${new Date(r.last_event * 1000).toLocaleString('vi-VN')}` : 'Chưa nhận sự kiện nào từ Zalo');
 			$('z_status').textContent = parts.join(' · ');
 		} catch { /* bo qua */ }
 	}
+	$('z_import').addEventListener('click', async () => {
+		if (dirty) await save();
+		$('z_import_msg').textContent = 'Đang nạp…';
+		try {
+			await api('/settings/zalo/token', { method: 'POST', body: JSON.stringify({ access_token: $('z_access').value.trim(), refresh_token: $('z_refresh').value.trim() }) });
+			$('z_access').value = ''; $('z_refresh').value = '';
+			$('z_import_msg').textContent = 'Đã nạp, token dùng được';
+			zaloStatus();
+		} catch (e) {
+			$('z_import_msg').textContent = `Lỗi: ${e.message}`;
+		}
+	});
 	$('z_copy').addEventListener('click', async () => {
 		try { await navigator.clipboard.writeText($('z_webhook').textContent); toast('Đã chép địa chỉ webhook'); }
 		catch { toast('Chọn và chép địa chỉ bằng tay'); }

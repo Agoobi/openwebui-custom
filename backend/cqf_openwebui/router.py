@@ -151,7 +151,7 @@ async def zalo_webhook(request: Request):
     raw = await request.body()
     if len(raw) > 1024 * 1024:
         return JSONResponse({"ok": False}, 413)
-    body = zalo.verify(raw, request.headers, z["oa_secret_key"])
+    body = zalo.verify(raw, request.headers, z)
     if body is None:  # khong co / sai chu ky (vd Zalo "Kiem tra" webhook): bo qua, nhung tra 200 (Zalo chi nhan 200)
         return {"ok": False}
     ev = zalo.parse(body)
@@ -183,7 +183,7 @@ async def _zalo_answer(s, ev, conv):
         return
     try:
         reply = await parts()["engine"].answer(s, conv, ev["text"][:1000])
-        ids = await zalo.send_text(ev["oa_id"] or s["zalo"]["oa_id"], ev["user_id"], reply, st)
+        ids = await zalo.send_text(parts()["home"], s["zalo"], ev["user_id"], reply, st)
         st.mark_sent(ids)
     except Exception as e:
         logger.warning("[cqf] zalo: khong tra loi duoc: %s", e)
@@ -276,14 +276,6 @@ async def post_settings(request: Request, user=Depends(get_admin_user)):
     allowed = {k: patch[k] for k in ("enabled", "business", "widget", "allowed_origins", "thu_thap_khach", "fallback_text",
                                      "min_searches", "max_passages", "max_tool_rounds", "llm", "tu_van", "zalo")
                if k in patch}
-    oa_id = str((allowed.get("zalo") or {}).get("oa_id") or "").strip()
-    try:
-        app_id = zalo.app_credentials()[0]
-    except zalo.ZaloError:
-        app_id = ""
-    if oa_id and oa_id == app_id:
-        _err(ValueError("Ô OA ID đang là App ID của app Zalo. OA ID là mã của Official Account (xem trong oa.zalo.me "
-                        "hoặc link zalo.me/<OA ID> trên website)."))
     try:
         s = store.save(allowed, parts()["home"])
     except (ValueError, TypeError) as e:
@@ -327,11 +319,25 @@ async def zalo_info(request: Request, user=Depends(get_admin_user)):
     info = {"ok": True, "webhook": f"{base}/api/v1/cqf/zalo/webhook", "last_event": parts()["zalo_state"].last_event()}
     if s["zalo"]["oa_id"]:
         try:
-            await asyncio.to_thread(zalo.access_token, s["zalo"]["oa_id"])
+            await asyncio.to_thread(zalo.access_token, parts()["home"], s["zalo"])
             info["token"] = "ok"
         except zalo.ZaloError as e:
             info["token"] = str(e)
+        info.update(zalo.token_info(parts()["home"], s["zalo"]))
     return info
+
+
+@router.post("/settings/zalo/token")
+async def zalo_token(request: Request, user=Depends(get_admin_user)):
+    """Nap cap token OA (access + refresh, lay o developers.zalo.me > API Explorer). Khong luu vao cai dat."""
+    body = await request.json()
+    s = store.load(parts()["home"])
+    try:
+        await asyncio.to_thread(zalo.import_tokens, parts()["home"], s["zalo"], str(body.get("access_token") or "").strip(),
+                                str(body.get("refresh_token") or "").strip())
+    except zalo.ZaloError as e:
+        _err(e)
+    return {"ok": True}
 
 
 @router.get("/settings/hermes-llm")

@@ -20,6 +20,8 @@ DEFAULTS = {
     "zalo": {  # kenh Zalo OA: khach nhan OA -> bot tra loi trong Zalo
         "enabled": False,
         "oa_id": "",
+        "app_id": "",  # developers.zalo.me > app > Thong tin ung dung: ID ung dung
+        "app_secret": "",  # ... > Khoa bi mat cua ung dung (lam moi token OA)
         "oa_secret_key": "",  # developers.zalo.me > app > Webhook > OA Secret Key (kiem chu ky webhook)
         "pause_hours": 12,  # nhan vien vua tra loi khach trong Zalo -> bot im voi khach do bao nhieu gio
     },
@@ -101,9 +103,14 @@ def save(patch: dict, home: Path = None) -> dict:
         z = new["zalo"]
         z["enabled"] = bool(z.get("enabled"))
         z["oa_id"] = "".join(ch for ch in str(z.get("oa_id") or "") if ch.isdigit())[:30]
-        if not str((patch.get("zalo") or {}).get("oa_secret_key") or "").strip():
-            z["oa_secret_key"] = cur["zalo"]["oa_secret_key"]  # de trong = giu khoa cu
-        z["oa_secret_key"] = str(z["oa_secret_key"]).strip()[:200]
+        for key in ("oa_secret_key", "app_secret"):  # de trong = giu khoa cu
+            if not str((patch.get("zalo") or {}).get(key) or "").strip():
+                z[key] = cur["zalo"][key]
+            z[key] = str(z[key]).strip()[:200]
+        z["app_id"] = "".join(ch for ch in str(z.get("app_id") or "") if ch.isdigit())[:30]
+        if z["oa_id"] and z["oa_id"] == z["app_id"]:
+            raise ValueError("Ô OA ID đang là App ID. OA ID là mã của Official Account (link zalo.me/<OA ID> trên "
+                             "website, hoặc oa.zalo.me).")
         z["pause_hours"] = max(0, min(168, int(z.get("pause_hours") or 0)))
         tv = new["tu_van"]
         tv["vai_tro"] = tv.get("vai_tro") if tv.get("vai_tro") in ("so_bo", "chi_tiet") else "so_bo"
@@ -128,4 +135,5 @@ def public(s: dict) -> dict:
     key = out["llm"].pop("api_key", "")
     out["llm"]["has_key"] = bool(key)
     out["zalo"]["has_secret"] = bool(out["zalo"].pop("oa_secret_key", ""))
+    out["zalo"]["has_app_secret"] = bool(out["zalo"].pop("app_secret", ""))
     return out
