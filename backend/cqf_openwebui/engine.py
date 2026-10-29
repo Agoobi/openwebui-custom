@@ -103,6 +103,8 @@ ZALO_RULES = ("KÊNH ZALO: khách đang nhắn qua Zalo OA của công ty. KHÔN
 # Do dai toi da cua 1 tin Zalo (ky tu) truoc khi phai rut gon
 ZALO_MAX = {"ngan": 450, "vua": 900}
 PRICE_Q = re.compile(r"(giá|bao nhiêu tiền|chi phí|báo giá|ngân sách|dự toán)", re.I)
+CONTACT_Q = re.compile(r"(số|sđt|hotline|điện thoại|liên hệ).{0,15}(nào|gì|đâu|bao nhiêu|với ai)|liên hệ (ai|với ai|ở đâu)|"
+                       r"hotline|số điện thoại (công ty|bên)", re.I)
 STAFF_Q = re.compile(r"(gặp|nói chuyện|liên hệ|gọi).{0,20}(nhân viên|kỹ sư|người|sale|kinh doanh)|số (nào|điện thoại)", re.I)
 
 
@@ -199,6 +201,10 @@ def final_reminder(s, channel, asked, handed, has_contact, text):
         out.append("Khách ĐÃ để lại liên hệ: không xin lại.")
     if handed:
         out.append("Đã báo nhân viên ở trên: không gọi chuyen_nhan_vien lại, không nói lại 'đã báo nhân viên'.")
+    hotline = ((s.get("business") or {}).get("hotline") or "").strip()
+    if hotline and CONTACT_Q.search(text):
+        out.append(f"Khách hỏi số / cách liên hệ công ty: đưa hotline chính thức {hotline} (có trong THÔNG TIN DOANH "
+                   "NGHIỆP), không nói là chưa có số.")
     note = (tv.get("ghi_chu") or "").strip()
     if note:
         out.append("Chủ shop dặn (BẮT BUỘC, đè lên mọi thông tin khác; câu trả lời mẫu trong lời dặn chỉ dùng nguyên văn "
