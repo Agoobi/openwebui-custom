@@ -188,7 +188,10 @@ def final_reminder(s, channel, asked, handed, has_contact, text):
         if wants:
             out.append(f"Khách đang hỏi giá / cần người tư vấn và CHƯA để lại liên hệ: xin {', '.join(labels)} để bộ "
                        "phận kinh doanh / kỹ sư liên hệ báo giá.")
-        elif not asked:
+        elif asked:
+            out.append("Câu trước đã xin liên hệ, khách chưa cho: câu này KHÔNG xin lại (chỉ xin lại khi khách hỏi "
+                       "giá hoặc cần người tư vấn).")
+        else:
             out.append(f"Khách chưa để lại liên hệ: hiểu nhu cầu chính rồi thì xin {', '.join(labels)}.")
         out.append("Khách CHƯA cho thông tin liên hệ: không được nói nhân viên sẽ liên hệ 'qua thông tin anh/chị đã "
                    "cung cấp'.")
@@ -198,7 +201,8 @@ def final_reminder(s, channel, asked, handed, has_contact, text):
         out.append("Đã báo nhân viên ở trên: không gọi chuyen_nhan_vien lại, không nói lại 'đã báo nhân viên'.")
     note = (tv.get("ghi_chu") or "").strip()
     if note:
-        out.append("Chủ shop dặn (BẮT BUỘC, đè lên mọi thông tin khác): " + note)
+        out.append("Chủ shop dặn (BẮT BUỘC, đè lên mọi thông tin khác; câu trả lời mẫu trong lời dặn chỉ dùng nguyên văn "
+                   "1 lần, các lần sau nói ngắn, tự nhiên, cùng ý): " + note)
     return "\n".join(out)
 
 
