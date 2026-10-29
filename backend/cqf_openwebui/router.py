@@ -183,6 +183,7 @@ async def _zalo_answer(s, ev, conv):
         return
     try:
         reply = await parts()["engine"].answer(s, conv, ev["text"][:1000])
+        reply = await parts()["engine"].shorten(s, reply)  # Zalo khong stream: con rut gon duoc truoc khi gui
         ids = await zalo.send_text(parts()["home"], s["zalo"], ev["user_id"], reply, st)
         st.mark_sent(ids)
     except Exception as e:

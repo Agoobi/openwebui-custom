@@ -157,7 +157,11 @@ def plain(md: str) -> str:
             continue  # dong ke cua bang
         if s.startswith("|"):
             s = " – ".join(c.strip() for c in s.strip("|").split("|") if c.strip())
+        if re.fullmatch(r"[-*_]{3,}", s):
+            continue  # dong ke ngang
         s = re.sub(r"^#{1,6}\s+", "", s)
+        s = re.sub(r"\$\\?(rightarrow|to)\$", "→", s)
+        s = re.sub(r"\$([^$]{1,40})\$", lambda m: m.group(1).replace("^2", "²").replace("\\", ""), s)
         s = re.sub(r"^[-*+]\s+", "• ", s)
         s = re.sub(r"\*\*(.+?)\*\*|__(.+?)__", lambda m: m.group(1) or m.group(2), s)
         s = re.sub(r"(?<![\w*])\*(?!\s)(.+?)(?<!\s)\*(?![\w*])", r"\1", s)

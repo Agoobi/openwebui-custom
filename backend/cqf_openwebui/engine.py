@@ -97,10 +97,13 @@ ROLE = {
 }
 
 
-ZALO_RULES = ("KÊNH ZALO: khách đang nhắn qua Zalo OA của công ty, nhân viên sẽ trả lời ngay trong cuộc trò chuyện Zalo "
-              "này. KHÔNG xin số Zalo. Cần nhân viên / kỹ sư -> gọi chuyen_nhan_vien và nói nhân viên sẽ vào trả lời "
-              "ngay trong Zalo này; chỉ xin số điện thoại khi khách muốn được gọi điện. Zalo không hiện Markdown: "
-              "không dùng bảng, không in đậm, liệt kê bằng dấu '•'. ")
+ZALO_RULES = ("KÊNH ZALO: khách đang nhắn qua Zalo OA của công ty. KHÔNG xin số Zalo (khách đang ở Zalo), vẫn xin các "
+              "thông tin liên hệ khác theo quy tắc xin liên hệ để nhân viên kinh doanh gọi / báo giá. Zalo không hiện "
+              "Markdown: không tiêu đề, không bảng, không in đậm, liệt kê bằng dấu '•'. ")
+# Do dai toi da cua 1 tin Zalo (ky tu) truoc khi phai rut gon
+ZALO_MAX = {"ngan": 450, "vua": 900}
+PRICE_Q = re.compile(r"(giá|bao nhiêu tiền|chi phí|báo giá|ngân sách|dự toán)", re.I)
+STAFF_Q = re.compile(r"(gặp|nói chuyện|liên hệ|gọi).{0,20}(nhân viên|kỹ sư|người|sale|kinh doanh)|số (nào|điện thoại)", re.I)
 
 
 def rules(s, asked_contact=False, channel="web"):
@@ -108,7 +111,7 @@ def rules(s, asked_contact=False, channel="web"):
     tv = s.get("tu_van") or {}
     ten = biz.get("ten") or "doanh nghiệp"
     info = "; ".join(f"{label}: {biz[k]}" for k, label in BIZ_LABELS.items() if (biz.get(k) or "").strip())
-    labels = [kb.FIELDS[f] for f in kb.lead_fields(s)]
+    labels = [kb.FIELDS[f] for f in kb.lead_fields(s) if not (channel == "zalo" and f == "zalo")]
     questions = [q.strip() for q in tv.get("cau_hoi") or [] if q.strip()]
     if not labels:
         lead = "Khách muốn liên hệ: đưa thông tin liên hệ chính thức. "
@@ -170,6 +173,33 @@ ENDED_REPLY = ("Dạ em đã chuyển thông tin cho nhân viên, nhân viên s�
 def is_ended(inbox, conv):
     msgs = (inbox.conversation(conv) or {}).get("messages", [])
     return any(m.get("role") == "event" and m.get("kind") == "ket_thuc" for m in msgs)
+
+
+def final_reminder(s, channel, asked, handed, has_contact, text):
+    tv = s.get("tu_van") or {}
+    labels = [kb.FIELDS[f] for f in kb.lead_fields(s) if not (channel == "zalo" and f == "zalo")]
+    out = ["NHẮC (ưu tiên cao nhất, áp dụng cho câu trả lời này):"]
+    out.append("Tối đa 3 câu ngắn, khoảng 60 từ; không tiêu đề, không dòng kẻ, không bảng, không liệt kê dài."
+               if tv.get("do_dai", "ngan") == "ngan" else "Tối đa 5 câu; không tiêu đề, không dòng kẻ.")
+    out.append("KHÔNG đưa bất kỳ con số giá, chi phí, ngân sách hay dự toán ước tính nào, kể cả 'tham khảo'. Không tự "
+               "tư vấn phương án / cấu hình chi tiết thay kỹ sư.")
+    wants = PRICE_Q.search(text) or STAFF_Q.search(text)
+    if labels and not has_contact:
+        if wants:
+            out.append(f"Khách đang hỏi giá / cần người tư vấn và CHƯA để lại liên hệ: xin {', '.join(labels)} để bộ "
+                       "phận kinh doanh / kỹ sư liên hệ báo giá.")
+        elif not asked:
+            out.append(f"Khách chưa để lại liên hệ: hiểu nhu cầu chính rồi thì xin {', '.join(labels)}.")
+        out.append("Khách CHƯA cho thông tin liên hệ: không được nói nhân viên sẽ liên hệ 'qua thông tin anh/chị đã "
+                   "cung cấp'.")
+    elif has_contact:
+        out.append("Khách ĐÃ để lại liên hệ: không xin lại.")
+    if handed:
+        out.append("Đã báo nhân viên ở trên: không gọi chuyen_nhan_vien lại, không nói lại 'đã báo nhân viên'.")
+    note = (tv.get("ghi_chu") or "").strip()
+    if note:
+        out.append("Chủ shop dặn (BẮT BUỘC, đè lên mọi thông tin khác): " + note)
+    return "\n".join(out)
 
 
 def had_handoff(inbox, conv):
@@ -384,12 +414,9 @@ class Engine:
         messages = [{"role": "system", "content": rules(s, asked, channel) + "\n\n[TÀI LIỆU DOANH NGHIỆP]\n" + docs}]
         messages += [{"role": m["role"], "content": m["text"]} for m in hist[-12:]]
         handed = any(m["role"] == "assistant" and HANDED_OFF.search(m["text"]) for m in hist[:-1])
-        if asked or handed:  # nhac sat cau tra loi (model hay quen quy tac dau prompt sau vai luot)
-            messages.append({"role": "system", "content": " ".join(
-                (["Đã xin thông tin liên hệ ở trên: câu trả lời này KHÔNG xin tên / số điện thoại / Zalo nữa."] if asked
-                 else []) +
-                (["Đã báo nhân viên ở trên: không gọi chuyen_nhan_vien lại, không nói lại 'đã báo nhân viên'."] if handed
-                 else []))})
+        # nhac sat cau tra loi, MOI luot: model (nhat la Gemini) hay quen quy tac dau prompt sau vai luot
+        messages.append({"role": "system", "content": final_reminder(
+            s, channel, asked, handed, self._has_contact(conv, channel), text)})
 
         # 2. LLM (stream); vong co tool: model co the tra them / luu khach truoc khi tra loi
         rounds = int(s.get("max_tool_rounds") or 0)
@@ -473,6 +500,23 @@ class Engine:
         if got_contact and channel != "zalo":  # web: nhan vien nhan Zalo / goi khach, cuoc chat ket thuc
             self.inbox.event(conv, "ket_thuc", {"ghi_chu": "Khách đã để lại liên hệ, nhân viên tiếp tục qua Zalo / điện thoại"})
             yield {"type": "end", "text": END_NOTE}
+
+    def _has_contact(self, conv, channel):
+        prof = ((self.inbox.conversation(conv) or {}).get("item") or {}).get("profile") or {}
+        return bool(prof.get("sdt") or (channel != "zalo" and prof.get("zalo")))
+
+    async def shorten(self, s, text):
+        """Kenh Zalo: model van viet qua dai -> nho model rut gon (giu y chinh, cau hoi, cau xin lien he)."""
+        limit = ZALO_MAX.get((s.get("tu_van") or {}).get("do_dai"), ZALO_MAX["ngan"])
+        if len(text) <= limit:
+            return text
+        n = 3 if limit == ZALO_MAX["ngan"] else 5
+        msg = await self._llm(hermes_llm.effective(s.get("llm")), [{"role": "user", "content": (
+            f"Viết lại tin nhắn tư vấn sau thành tối đa {n} câu ngắn (dưới {limit} ký tự), tiếng Việt tự nhiên như nhắn "
+            "tin, giữ nguyên ý chính, giữ câu hỏi cuối và câu xin thông tin liên hệ nếu có, không thêm thông tin hay con "
+            "số mới, không tiêu đề, không bảng, không in đậm. Chỉ trả về tin nhắn.\n\n" + text)}])
+        short = (msg.get("content") or "").strip()
+        return short if 0 < len(short) < len(text) else text
 
     def _tool(self, conv, name, args, evidence):
         if name == "tim_kien_thuc":
