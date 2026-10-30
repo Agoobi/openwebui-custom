@@ -15,6 +15,7 @@ STOP = set("la va cua co khong cho minh em anh chi ban oi a ah nhe nha vay the n
            "voi nhung cac mot nhu con se da dang ben shop cong ty mua can xin cam on chao".split())
 SYSTEM_ERROR_TEXT = ("Dạ hệ thống tư vấn đang bận một chút. Anh/chị để lại tên và số điện thoại, "
                      "nhân viên bên em sẽ liên hệ ngay ạ.")
+SYSTEM_ERROR_GOT_CONTACT = "Dạ em đã nhận thông tin của anh/chị, nhân viên kinh doanh bên em sẽ liên hệ sớm ạ."
 
 TOOLS = [
     {"type": "function", "function": {
@@ -377,7 +378,14 @@ class Engine:
                 if self.trace:
                     yield {"type": "trace", "step": "error", "text": str(e)[:500]}
                 self.inbox.event(conv, "guard_blocked", {"ly_do": "Lỗi gọi LLM", "tom_tat": str(e)[:200], "khach_hoi": text})
-                sent = SYSTEM_ERROR_TEXT
+                channel = conv.split(":", 1)[0]
+                phones = kb.PHONE.findall(text)
+                if phones and not self._has_contact(conv, channel):  # loi giua chung: van luu so khach vua gui
+                    name = find_name(text)
+                    self.inbox.event(conv, "lead", {"sdt": phones[0].strip(), **({"ten": name} if name else {}),
+                                                    "nhu_cau": text[:200]})
+                # da co so roi thi dung xin lai (khach vua gui thong tin ma bot hoi lai = mat diem)
+                sent = SYSTEM_ERROR_GOT_CONTACT if phones or self._has_contact(conv, channel) else SYSTEM_ERROR_TEXT
                 yield {"type": "replace", "text": sent}
             self.inbox.message(conv, "assistant", sent.strip())
             yield {"type": "done"}
@@ -554,7 +562,7 @@ class Engine:
         if llm.get("api_key"):
             headers["Authorization"] = f"Bearer {llm['api_key']}"
         url = llm["base_url"].rstrip("/") + "/chat/completions"
-        calls, held, carry = {}, None, ""  # held: chu tu "<｜" tro di, co the la tool call model viet thanh chu
+        calls, slots, held, carry = {}, {}, None, ""  # slots: index cua API -> khoa trong calls; held: chu tu "<｜" tro di, co the la tool call model viet thanh chu
         async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=120, sock_read=60)) as http:
             for attempt in range(LLM_RETRIES + 1):  # 429 (vuot gioi han / phut, vd Gemini goi mien phi): cho roi goi lai
                 r = await http.post(url, json=body, headers=headers)
@@ -579,7 +587,11 @@ class Engine:
                     except ValueError:
                         continue
                     for tc in delta.get("tool_calls") or []:
-                        c = calls.setdefault(tc.get("index", 0), {"id": "", "type": "function", "function": {"name": "", "arguments": ""}})
+                        # Gemini gui moi call (du goi song song) voi index 0, id rieng: id moi = call moi, khong noi chuoi
+                        c = calls.get(slots.get(tc.get("index", 0)))
+                        if c is None or (tc.get("id") and c["id"] and tc["id"] != c["id"]):
+                            slots[tc.get("index", 0)] = len(calls)
+                            c = calls[len(calls)] = {"id": "", "type": "function", "function": {"name": "", "arguments": ""}}
                         c["id"] = tc.get("id") or c["id"]
                         fn = tc.get("function") or {}
                         c["function"]["name"] += fn.get("name") or ""
