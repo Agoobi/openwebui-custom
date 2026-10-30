@@ -26,6 +26,7 @@ from .engine import Engine
 from .inbox import get_inbox
 from . import hermes_llm
 from .knowledge import Knowledge
+from .syserrors import SysErrors
 from .testlog import TestLog
 from . import zalo
 
@@ -46,8 +47,10 @@ def parts():
         k = Knowledge(home)
         box = get_inbox(home, {})
         test_box = get_inbox(home / "test", {})  # tin thu cua quan tri vien: khong lan vao Hop thu
-        _parts.update(home=home, k=k, inbox=box, engine=Engine(k, box), test_engine=Engine(k, test_box, trace=True),
-                      test_log=TestLog(home), zalo_state=zalo.ZaloState(home))
+        errors = SysErrors(home)
+        _parts.update(home=home, k=k, inbox=box, engine=Engine(k, box, errors=errors),
+                      test_engine=Engine(k, test_box, trace=True), test_log=TestLog(home),
+                      zalo_state=zalo.ZaloState(home), errors=errors)
     return _parts
 
 
@@ -183,12 +186,15 @@ async def _zalo_answer(s, ev, conv):
         return
     try:
         reply = await parts()["engine"].answer(s, conv, ev["text"][:1000])
+        if not reply.strip():  # LLM loi: bot im, loi da hien tren Hop thu
+            return
         reply = await parts()["engine"].shorten(s, reply)  # Zalo khong stream: con rut gon duoc truoc khi gui
         ids = await zalo.send_text(parts()["home"], s["zalo"], ev["user_id"], reply, st)
         st.mark_sent(ids)
     except Exception as e:
         logger.warning("[cqf] zalo: khong tra loi duoc: %s", e)
         box.event(conv, "guard_blocked", {"ly_do": "Không gửi được tin Zalo", "tom_tat": str(e)[:200]})
+        parts()["errors"].add(conv, f"Không gửi được tin Zalo: {e}", ev["text"])
 
 
 # ---------------------------------------------------------------- thu chatbot (quan tri vien)
@@ -445,7 +451,14 @@ async def kb_search(q: str, user=Depends(get_admin_user)):
 
 @router.get("/inbox/index")
 async def inbox_index(user=Depends(get_admin_user)):
-    return {"ok": True, "me": user.name, **parts()["inbox"].index()}
+    return {"ok": True, "me": user.name, **parts()["inbox"].index(), "errors": parts()["errors"].active()}
+
+
+@router.post("/errors/clear")
+async def errors_clear(user=Depends(get_admin_user)):
+    """Bang loi do tren Hop thu: quan tri vien da sua xong."""
+    parts()["errors"].clear()
+    return {"ok": True}
 
 
 @router.get("/inbox/conv")

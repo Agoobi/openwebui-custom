@@ -437,6 +437,32 @@
 		$('listEmptyText').textContent = 'Chưa biết địa chỉ Hermes: cài lại openwebui-custom với HERMES_INBOX_URL.';
 	}
 
+	// ------------------------------------------------------------ loi he thong (LLM loi: bot im, quan tri vien sua)
+	function renderErrors() {
+		const errs = state.index?.errors || [];
+		$('syserr').hidden = !errs.length;
+		if (!errs.length) return;
+		$('syserrTitle').textContent = `Bot gặp lỗi ${errs.length} lần, chưa trả lời khách`;
+		const names = Object.fromEntries((state.index.items || []).map((it) => [it.conv, nameOf(it)]));
+		$('syserrList').replaceChildren(...errs.slice(0, 20).map((e) => {
+			const li = el('li');
+			const a = el('a', '', names[e.conv] || 'Khách');
+			a.href = '#' + encodeURIComponent(e.conv);
+			a.addEventListener('click', (ev) => { ev.preventDefault(); select(e.conv); });
+			li.append(`${clock(e.t)} · `, a, e.khach_hoi ? ` hỏi “${e.khach_hoi.slice(0, 80)}” · ` : ' · ', el('code', '', e.loi.slice(0, 160)));
+			return li;
+		}));
+	}
+	$('syserrClear').addEventListener('click', async () => {
+		try {
+			await api('/errors/clear', { method: 'POST', body: '{}' });
+			if (state.index) state.index.errors = [];
+			renderErrors();
+		} catch (e) {
+			if (e.auth) authFail();
+		}
+	});
+
 	// ------------------------------------------------------------ vong lap
 	let busy = false;
 	async function tick(now) {
@@ -445,6 +471,7 @@
 		try {
 			state.index = await loadIndex();
 			live(true, `Cập nhật ${new Date().toLocaleTimeString('vi-VN')}`);
+			renderErrors();
 			renderList();
 			if (state.selected) { renderDetail(); await refreshChat(false); }
 		} catch (e) {

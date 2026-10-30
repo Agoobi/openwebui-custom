@@ -226,6 +226,26 @@ ASKED_CONTACT = re.compile(r"(xin|để lại|cho em)[^.?!\n]{0,30}(zalo|số đ
 
 
 LLM_RETRIES = 2
+RETRY_STATUS = (429, 500, 502, 503, 504)
+NET_WAIT = (2, 5)  # giay cho truoc lan goi lai thu 1, 2 (5xx / mat ket noi)
+
+
+def without_tool_calls(messages):
+    """Lich su chat bo tool_calls / tin role tool: ket qua cong cu thanh ghi chu he thong (model van biet da luu khach)."""
+    calls, out = {}, []
+    for m in messages:
+        if m.get("tool_calls"):
+            for c in m["tool_calls"]:
+                calls[c.get("id")] = c.get("function") or {}
+            if (m.get("content") or "").strip():
+                out.append({"role": "assistant", "content": m["content"]})
+        elif m.get("role") == "tool":
+            fn = calls.get(m.get("tool_call_id")) or {}
+            out.append({"role": "system", "content": f"[Đã gọi công cụ {fn.get('name', '')} "
+                                                     f"{str(fn.get('arguments', ''))[:500]}] Kết quả: {m.get('content', '')}"})
+        else:
+            out.append(m)
+    return out
 
 
 def retry_delay(text, retry_after, attempt):
@@ -336,10 +356,11 @@ def find_name(text):
 
 
 class Engine:
-    def __init__(self, knowledge, inbox, trace=False):
+    def __init__(self, knowledge, inbox, trace=False, errors=None):
         self.k = knowledge
         self.inbox = inbox
         self.trace = trace  # trang "Thu chatbot": them su kien trace (tra gi, thay doan nao, goi tool gi, chan so nao)
+        self.errors = errors  # SysErrors: loi LLM hien bang do tren Hop thu
         self._locks = {}
 
     async def answer(self, s, conv, text, page=None):
@@ -373,21 +394,27 @@ class Engine:
                     elif ev["type"] == "replace":
                         sent = ev["text"]
                     yield ev
-            except Exception as e:  # LLM loi / sai cau hinh: khach nhan cau xin lien he, chu shop thay su kien
+            except Exception as e:  # LLM loi (da goi lai van loi): bot im tren Zalo, quan tri vien thay bang do Hop thu
                 logger.warning("[cqf] tra loi loi: %s", e)
                 if self.trace:
                     yield {"type": "trace", "step": "error", "text": str(e)[:500]}
-                self.inbox.event(conv, "guard_blocked", {"ly_do": "Lỗi gọi LLM", "tom_tat": str(e)[:200], "khach_hoi": text})
+                self.inbox.event(conv, "guard_blocked", {"ly_do": "Lỗi gọi LLM, bot chưa trả lời khách",
+                                                         "tom_tat": str(e)[:200], "khach_hoi": text})
+                if self.errors:
+                    self.errors.add(conv, e, text)
                 channel = conv.split(":", 1)[0]
                 phones = kb.PHONE.findall(text)
                 if phones and not self._has_contact(conv, channel):  # loi giua chung: van luu so khach vua gui
                     name = find_name(text)
                     self.inbox.event(conv, "lead", {"sdt": phones[0].strip(), **({"ten": name} if name else {}),
                                                     "nhu_cau": text[:200]})
-                # da co so roi thi dung xin lai (khach vua gui thong tin ma bot hoi lai = mat diem)
-                sent = SYSTEM_ERROR_GOT_CONTACT if phones or self._has_contact(conv, channel) else SYSTEM_ERROR_TEXT
+                if channel == "zalo":  # khong gui cau "he thong ban" (xin lai lien he = mat diem): nhan vien tra loi
+                    sent = ""
+                else:  # khung chat web dang cho: phai co cau tra; da co so thi dung xin lai
+                    sent = SYSTEM_ERROR_GOT_CONTACT if phones or self._has_contact(conv, channel) else SYSTEM_ERROR_TEXT
                 yield {"type": "replace", "text": sent}
-            self.inbox.message(conv, "assistant", sent.strip())
+            if sent.strip():
+                self.inbox.message(conv, "assistant", sent.strip())
             yield {"type": "done"}
 
     async def _stream(self, s, conv, text):
@@ -468,7 +495,15 @@ class Engine:
                     try:
                         args = json.loads(c["function"]["arguments"] or "{}")
                     except ValueError:
-                        args = {}
+                        args = None
+                    if not isinstance(args, dict):  # bao loi cho model goi lai; khong luu lead rong
+                        c["function"]["arguments"] = "{}"  # lich su gui lai LLM phai la JSON hop le, khong thi 400
+                        result = (f"LỖI: tham số gọi {name} không phải JSON object hợp lệ nên chưa thực hiện. "
+                                  f"Gọi lại {name} với tham số JSON đúng.")
+                        if self.trace:
+                            yield {"type": "trace", "step": "tool", "name": name, "args": {}, "result": result}
+                        messages.append({"role": "tool", "tool_call_id": c["id"], "content": result})
+                        continue
                     if name == "tim_kien_thuc":
                         yield {"type": "status", "step": "search", "text": f"Tra thêm: {args.get('query', '')}"}
                     elif name == "luu_khach_hang":
@@ -538,6 +573,8 @@ class Engine:
 
     def _tool(self, conv, name, args, evidence):
         if name == "tim_kien_thuc":
+            if not str(args.get("query") or "").strip():
+                return "LỖI: thiếu query. Gọi lại tim_kien_thuc với câu cần tìm."
             hits = self.k.search(str(args.get("query", "")), 5)
             evidence += [h["text"] for h in hits]
             return passages_text(hits) if hits else "KHÔNG TÌM THẤY trong tài liệu."
@@ -551,7 +588,8 @@ class Engine:
         if name == "chuyen_nhan_vien":
             self.inbox.event(conv, "handoff", {k: str(v)[:300] for k, v in args.items() if v})
             return "Đã báo nhân viên."
-        return "Tool không tồn tại."
+        return (f"LỖI: không có công cụ {name!r}. Chỉ có: " + ", ".join(t["function"]["name"] for t in TOOLS)
+                + ". Mỗi công cụ là một lệnh gọi riêng.")
 
     async def _llm_stream(self, llm, messages, tools=None):
         """Goi LLM che do stream. Sinh ("text", doan chu) va cuoi cung ("tool", {index: tool_call}) neu model goi tool."""
@@ -564,14 +602,33 @@ class Engine:
         url = llm["base_url"].rstrip("/") + "/chat/completions"
         calls, slots, held, carry = {}, {}, None, ""  # slots: index cua API -> khoa trong calls; held: chu tu "<｜" tro di, co the la tool call model viet thanh chu
         async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=120, sock_read=60)) as http:
-            for attempt in range(LLM_RETRIES + 1):  # 429 (vuot gioi han / phut, vd Gemini goi mien phi): cho roi goi lai
-                r = await http.post(url, json=body, headers=headers)
-                if r.status != 429 or attempt == LLM_RETRIES:
+            attempt, stripped = 0, False
+            while True:
+                try:
+                    r = await http.post(url, json=body, headers=headers)
+                except (aiohttp.ClientError, asyncio.TimeoutError) as e:  # mat ket noi / qua gio: cho roi goi lai
+                    if attempt == LLM_RETRIES:
+                        raise RuntimeError(f"LLM không kết nối được: {e!r}") from e
+                    logger.info("[cqf] LLM loi ket noi (%r), doi %ss roi goi lai", e, NET_WAIT[attempt])
+                    await asyncio.sleep(NET_WAIT[attempt])
+                    attempt += 1
+                    continue
+                if r.status == 400 and not stripped and any(m.get("tool_calls") for m in messages):
+                    # LLM tu choi lich su goi cong cu (vd call ghep hong): doi thanh chu thuong, goi lai 1 lan
+                    logger.warning("[cqf] LLM 400 voi lich su tool, goi lai khong co tool_calls: %s", (await r.text())[:200])
+                    r.release()
+                    messages[:] = without_tool_calls(messages)  # cac vong sau dung lich su da sach
+                    body["messages"], stripped = messages, True
+                    continue
+                if r.status not in RETRY_STATUS or attempt == LLM_RETRIES:
                     break
-                wait = retry_delay(await r.text(), r.headers.get("Retry-After"), attempt)
+                # 429 (vuot gioi han / phut, vd Gemini goi mien phi) hoac 5xx (qua tai): cho roi goi lai
+                wait = retry_delay(await r.text(), r.headers.get("Retry-After"), attempt) if r.status == 429 \
+                    else NET_WAIT[attempt]
                 r.release()
-                logger.info("[cqf] LLM 429, doi %ss roi goi lai", wait)
+                logger.info("[cqf] LLM %s, doi %ss roi goi lai", r.status, wait)
                 await asyncio.sleep(wait)
+                attempt += 1
             async with r:
                 if r.status != 200:
                     raise RuntimeError(f"LLM HTTP {r.status}: {(await r.text())[:200]}")
