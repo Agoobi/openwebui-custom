@@ -193,6 +193,17 @@ def check_site(actor: Actor, site_id: str) -> dict:
     return result
 
 
+def site_categories(actor: Actor, site_id: str) -> list[dict]:
+    row = _site_row(actor.user_id, site_id)
+    if not row:
+        raise Refused("Không thấy site này.", 404)
+    try:
+        with client_for(row) as wp:
+            return wp.categories()
+    except WpError as error:
+        raise Refused(error.message, 502) from error
+
+
 def delete_site(actor: Actor, site_id: str) -> None:
     if actor.is_agent:
         raise Refused(config.RULE_TEXT["agent"], 403)
@@ -419,6 +430,63 @@ def remove_cover(actor: Actor, post_id: str) -> dict:
     return get_post(actor.user_id, post_id)
 
 
+MEDIA_PREFIX = "/api/v1/cqf/lich/media/"
+_MEDIA_RE = re.compile(r"""(src=["'])""" + re.escape(MEDIA_PREFIX) + r"""([a-z0-9]+)/([A-Za-z0-9._-]+)(["'])""")
+
+
+def add_media(actor: Actor, post_id: str, content: bytes, filename: str) -> dict:
+    """An image for inside the post. It is shown from here (preview, chat) and uploaded to WordPress at send time."""
+    row = _row(actor.user_id, post_id)
+    _editable(row)
+    if len(content) > config.MAX_COVER_BYTES:
+        raise Refused("Ảnh quá lớn (tối đa 8 MB).")
+    kind = _image_kind(content)
+    if kind is None:
+        raise Refused("Ảnh phải là JPG, PNG, GIF hoặc WebP.")
+    stem = slugify(Path(filename).stem)[:50] or "anh"
+    name = f"{stem}-{uuid.uuid4().hex[:6]}.{'jpg' if kind == 'jpeg' else kind}"
+    folder = config.COVER_DIR / "media" / post_id
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / name).write_bytes(content)
+    with db.tx() as conn:
+        _history(conn, post_id, actor, f"Thêm ảnh trong bài: {name}")
+    return {"name": name, "url": f"{MEDIA_PREFIX}{post_id}/{name}"}
+
+
+def media_path(user_id: str, post_id: str, name: str) -> Path | None:
+    _row(user_id, post_id)
+    if not re.fullmatch(r"[A-Za-z0-9._-]+", name) or name.startswith("."):
+        return None
+    path = config.COVER_DIR / "media" / post_id / name
+    return path if path.is_file() else None
+
+
+def _send_inline_media(wp, row) -> str:
+    """Uploads the post's own images once (the WordPress urls are remembered) and points the html at them."""
+    done = db.loads(row["media_map"], {})
+    changed = False
+
+    def swap(match):
+        nonlocal changed
+        post_id, name = match.group(2), match.group(3)
+        if post_id != row["id"]:
+            return match.group(0)
+        if name not in done:
+            path = config.COVER_DIR / "media" / post_id / name
+            if not path.is_file():
+                raise WpError(f"Ảnh {name} trong bài không còn trên máy chủ Lịch đăng.", permanent=True)
+            _, url = wp.upload_media_url(path, name, row["title"])
+            done[name] = url
+            changed = True
+        return match.group(1) + done[name] + match.group(4)
+
+    html_out = _MEDIA_RE.sub(swap, row["html"])
+    if changed:
+        with db.tx() as conn:
+            conn.execute("UPDATE posts SET media_map=? WHERE id=?", (db.dumps(done), row["id"]))
+    return html_out
+
+
 def cover_path(user_id: str, post_id: str) -> Path | None:
     row = _row(user_id, post_id)
     return config.COVER_DIR / row["cover_file"] if row["cover_file"] else None
@@ -562,7 +630,7 @@ def send(post_id: str) -> None:
 
         payload = {
             "title": row["title"],
-            "content": row["html"],
+            "content": _send_inline_media(wp, row),
             "excerpt": row["excerpt"],
             "slug": row["slug"],
             "status": "publish" if row["mode"] == "publish" else "draft",
@@ -572,7 +640,7 @@ def send(post_id: str) -> None:
         categories = db.loads(row["categories"], [])
         tags = db.loads(row["tags"], [])
         if categories:
-            payload["categories"] = wp.term_ids("categories", categories)
+            payload["categories"] = wp.term_ids("categories", categories, create=False)
         if tags:
             payload["tags"] = wp.term_ids("tags", tags)
 

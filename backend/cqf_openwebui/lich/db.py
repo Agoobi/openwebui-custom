@@ -53,6 +53,7 @@ CREATE TABLE IF NOT EXISTS posts (
     owui_event_id TEXT,
     owui_start INTEGER,
     owui_sig TEXT,
+    media_map TEXT,
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL,
     archived_at INTEGER
@@ -97,6 +98,11 @@ def connect() -> sqlite3.Connection:
         conn.execute("PRAGMA foreign_keys=ON")
         conn.execute("PRAGMA busy_timeout=5000")
         conn.executescript(SCHEMA)
+        _migrate(conn)
+        for suffix in ("", "-wal", "-shm"):
+            path = config.DB_PATH.with_name(config.DB_PATH.name + suffix)
+            if path.exists():
+                path.chmod(0o600)  # holds encrypted application passwords and drafts
         _conn = conn
     return _conn
 
@@ -113,6 +119,13 @@ def tx():
         except BaseException:
             conn.execute("ROLLBACK")
             raise
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Columns added after the first release."""
+    have = {row[1] for row in conn.execute("PRAGMA table_info(posts)")}
+    if "media_map" not in have:
+        conn.execute("ALTER TABLE posts ADD COLUMN media_map TEXT")
 
 
 def query(sql: str, params: tuple = ()) -> list[sqlite3.Row]:

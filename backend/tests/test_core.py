@@ -181,3 +181,34 @@ def test_cover_must_be_an_image():
         service.set_cover(ME, post["id"], b"<?php echo 1;", "x.php", None)
     png = bytes([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]) + b"rest"
     assert service.set_cover(ME, post["id"], png, "a.png", "Ảnh")["has_cover"] is True
+
+
+def test_unknown_category_fails_at_once(fresh):
+    fake, clock = fresh
+    post = service.schedule(ME, make(categories=["Không có"])["id"], "2026-11-04 10:05", None, None)
+    clock["now"] += 300
+    worker.dispatch_due()
+    failed = service.get_post("u1", post["id"])
+    assert failed["state"] == "failed" and "Không có" in failed["error"] and fake.saves == 0
+
+
+def test_inline_images_go_up_once_and_the_html_points_at_wordpress(fresh):
+    fake, clock = fresh
+    png = bytes([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]) + b"rest"
+    post = make(categories=["Tin tức"])
+    image = service.add_media(ME, post["id"], png, "Sơ đồ phòng lab.png")
+    assert image["url"].startswith("/api/v1/cqf/lich/media/" + post["id"] + "/so-do-phong-lab-")
+    service.update_post(ME, post["id"], {"html": f'<p>a</p><img src="{image["url"]}" alt="x"><img src="/api/v1/cqf/lich/media/other/z.png">'})
+    service.schedule(ME, post["id"], "2026-11-04 10:05", None, None)
+    fake.fail_after_save = True  # first try times out after WordPress saved it
+    clock["now"] += 300
+    worker.dispatch_due()
+    clock["now"] += 60
+    worker.dispatch_due()
+    sent = service.get_post("u1", post["id"])
+    assert sent["state"] == "sent" and fake.uploads == [image["name"]]
+    saved_html = fake.posts[sent["wp_post_id"]]["content"]
+    assert f'src="https://example.test/wp-content/uploads/{image["name"]}"' in saved_html
+    assert 'src="/api/v1/cqf/lich/media/other/z.png"' in saved_html  # another post's image is left alone
+    assert service.media_path("u1", post["id"], image["name"]) is not None
+    assert service.media_path("u1", post["id"], "../secret.key") is None

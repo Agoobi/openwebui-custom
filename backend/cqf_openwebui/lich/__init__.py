@@ -6,6 +6,7 @@ router: mounted at /api/v1/cqf/lich by cqf_openwebui.router. start(): the backgr
 
 
 def start():
-    from . import worker
+    from . import config, worker
 
+    config.agent()  # make agent.json (token + the user it works for) so the agent skill can read it
     return worker.start()

@@ -167,7 +167,21 @@ class WordPress:
         path = f"/posts/{post_id}" if post_id else "/posts"
         return self._request("POST", path, json=payload)
 
-    def term_ids(self, taxonomy: str, names: list[str]) -> list[int]:
+    def categories(self) -> list[dict]:
+        items, page = [], 1
+        while page <= 10:
+            batch = self._request("GET", "/categories", params={"per_page": 100, "page": page, "context": "view",
+                                                                "_fields": "id,name,parent,count"})
+            items += [{"id": t["id"], "name": html.unescape(t["name"]), "parent": t.get("parent", 0),
+                       "count": t.get("count", 0)} for t in batch]
+            if len(batch) < 100:
+                break
+            page += 1
+        return items
+
+    def term_ids(self, taxonomy: str, names: list[str], create: bool = True) -> list[int]:
+        """Ids of the named terms. create=False refuses names the site does not have (categories are chosen from
+        what the site has, so a typo never becomes a new category)."""
         ids: list[int] = []
         for raw in names:
             name = raw.strip()
@@ -175,6 +189,8 @@ class WordPress:
                 continue
             found = self._request("GET", f"/{taxonomy}", params={"search": name, "per_page": 100, "context": "view"})
             match = next((t for t in found if html.unescape(t.get("name", "")).casefold() == name.casefold()), None)
+            if match is None and not create:
+                raise WpError(f'Chuyên mục "{name}" không có trên {self.host}. Chọn chuyên mục có sẵn.', permanent=True)
             if match is None:
                 try:
                     match = self._request("POST", f"/{taxonomy}", json={"name": name})
@@ -187,6 +203,18 @@ class WordPress:
                         raise
             ids.append(int(match["id"]))
         return ids
+
+    def upload_media_url(self, path: Path, filename: str, alt: str) -> tuple[int, str]:
+        mime = mimetypes.guess_type(filename)[0] or "image/jpeg"
+        media = self._request(
+            "POST",
+            "/media",
+            content=path.read_bytes(),
+            headers={"Content-Type": mime, "Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+        if alt:
+            self._request("POST", f"/media/{media['id']}", json={"alt_text": alt})
+        return int(media["id"]), str(media.get("source_url") or "")
 
     def upload_media(self, path: Path, filename: str, alt: str) -> int:
         mime = mimetypes.guess_type(filename)[0] or "image/jpeg"

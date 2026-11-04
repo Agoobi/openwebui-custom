@@ -10,7 +10,8 @@ user named there. The agent cannot touch sites or settings (rule "agent").
     GET/POST /sites, PATCH/DELETE /sites/{id}, POST /sites/{id}/check
     GET  /posts?start&end&state       POST /posts
     GET/PATCH /posts/{id}             POST /posts/{id}/schedule|mode|unschedule|retry|archive
-    GET/POST/DELETE /posts/{id}/cover
+    GET/POST/DELETE /posts/{id}/cover  POST /posts/{id}/media, GET /media/{post}/{name}  (images inside the post)
+    GET  /sites/{id}/categories        categories the site has; a post may only use these
     GET  /slots/next?count
     GET/POST /agent                   who the agent works for; POST makes it work for the caller (admin)
 """
@@ -152,6 +153,12 @@ def check_site(site_id: str, actor: Actor = Depends(current_actor)):
     return service.check_site(actor, site_id)
 
 
+@router.get("/sites/{site_id}/categories")
+def site_categories(site_id: str, actor: Actor = Depends(current_actor)):
+    """Categories the site has (posts may only use these)."""
+    return service.site_categories(actor, site_id)
+
+
 @router.delete("/sites/{site_id}")
 def delete_site(site_id: str, actor: Actor = Depends(current_actor)):
     service.delete_site(actor, site_id)
@@ -254,6 +261,21 @@ def get_cover(post_id: str, actor: Actor = Depends(current_actor)):
     if not path or not path.exists():
         raise Refused("Bài chưa có ảnh bìa.", 404)
     return FileResponse(path, headers={"Cache-Control": "private, max-age=300"})
+
+
+@router.post("/posts/{post_id}/media")
+async def upload_media(post_id: str, file: UploadFile = File(...), actor: Actor = Depends(current_actor)):
+    """An image for inside the post: returns the url to put in the html (<img src=...>)."""
+    content = await file.read(config.MAX_COVER_BYTES + 1)
+    return service.add_media(actor, post_id, content, file.filename or "anh")
+
+
+@router.get("/media/{post_id}/{name}")
+def get_media(post_id: str, name: str, actor: Actor = Depends(current_actor)):
+    path = service.media_path(actor.user_id, post_id, name)
+    if path is None:
+        raise Refused("Không thấy ảnh.", 404)
+    return FileResponse(path, headers={"Cache-Control": "private, max-age=3600"})
 
 
 @router.get("/slots/next")

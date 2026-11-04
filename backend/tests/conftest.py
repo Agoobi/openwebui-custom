@@ -46,8 +46,18 @@ class FakeWP:
     def upload_media(self, path, filename, alt):
         return 77
 
-    def term_ids(self, taxonomy, names):
+    categories_on_site = ("Tin tức", "Thử lịch đăng")
+
+    def term_ids(self, taxonomy, names, create=True):
+        if not create:
+            for name in names:
+                if name not in self.categories_on_site:
+                    raise WpError(f'Chuyên mục "{name}" không có trên example.test. Chọn chuyên mục có sẵn.', permanent=True)
         return [len(n) for n in names]
+
+    def upload_media_url(self, path, filename, alt):
+        self.uploads = getattr(self, "uploads", []) + [filename]
+        return 90 + len(self.uploads), f"{self.url}/wp-content/uploads/{filename}"
 
     def save_post(self, post_id, payload):
         if self.fail_with:
@@ -55,7 +65,8 @@ class FakeWP:
         self.saves += 1
         post_id = post_id or 1000 + len(self.posts)
         self.posts[post_id] = {"id": post_id, "slug": payload["slug"], "title": {"raw": payload["title"]},
-                               "status": payload["status"], "link": f"{self.url}/{payload['slug']}/"}
+                               "status": payload["status"], "link": f"{self.url}/{payload['slug']}/",
+                               "content": payload["content"]}
         if self.fail_after_save:
             self.fail_after_save = False
             raise WpError("example.test không trả lời trong 40 giây.")

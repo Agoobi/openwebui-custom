@@ -619,6 +619,21 @@
       (p.excerpt ? "<p class='ex'>" + esc(p.excerpt) + "</p>" : "") + p.html + "</article></body></html>";
   }
 
+  function inlineMedia(html) {
+    var urls = [];
+    html.replace(/\/api\/v1\/cqf\/lich\/media\/[a-z0-9]+\/[A-Za-z0-9._-]+/g, function (u) { if (urls.indexOf(u) < 0) urls.push(u); return u; });
+    return Promise.all(urls.map(function (u) {
+      return fetch(u, { headers: { Authorization: "Bearer " + token() } }).then(function (r) { return r.ok ? r.blob() : null; })
+        .then(function (b) {
+          if (!b) return [u, u];
+          return new Promise(function (ok) { var fr = new FileReader(); fr.onload = function () { ok([u, fr.result]); }; fr.readAsDataURL(b); });
+        }).catch(function () { return [u, u]; });
+    })).then(function (pairs) {
+      pairs.forEach(function (pair) { html = html.split(pair[0]).join(pair[1]); });
+      return html;
+    });
+  }
+
   function openPreview(p) {
     var go = function (data) {
       var layer = $("#layer");
@@ -626,7 +641,8 @@
       holder.innerHTML = '<div class="overlay top" data-act="close-modal"></div><div class="modal" role="dialog"><div class="modal-head"><h2>Xem trước</h2>' +
         '<span class="hint">Giao diện gần giống bài trên site; theme thật có thể khác chút.</span>' +
         '<button class="btn icon ghost" data-act="close-modal">' + icon("x") + '</button></div><iframe sandbox="" title="Xem trước"></iframe></div>';
-      holder.querySelector("iframe").srcdoc = previewDoc(p, data);
+      var frame = holder.querySelector("iframe");
+      inlineMedia(p.html).then(function (body) { frame.srcdoc = previewDoc(Object.assign({}, p, { html: body }), data); });
       holder.id = "modal";
       layer.appendChild(holder);
       icons();
@@ -655,9 +671,10 @@
         "</div>" +
         '<div class="sec">' +
           '<label class="field"><span>Chuyên mục</span><input class="input" name="categories" placeholder="Cách nhau bằng dấu phẩy" value="' + esc(p.categories.join(", ")) + '"></label>' +
+          '<div class="slot-pick" id="catpick"><span class="hint">Đang lấy chuyên mục của site…</span></div>' +
           '<label class="field"><span>Thẻ</span><input class="input" name="tags" placeholder="Cách nhau bằng dấu phẩy" value="' + esc(p.tags.join(", ")) + '"></label>' +
           '<label class="field"><span>Đường dẫn</span><input class="input" name="slug" placeholder="tự tạo từ tiêu đề" value="' + esc(p.slug) + '"></label>' +
-          '<p class="hint">Chuyên mục và thẻ chưa có trên site sẽ được tạo khi đăng.</p>' +
+          '<p class="hint">Chuyên mục chọn trong danh sách có sẵn của site (không tạo chuyên mục mới). Thẻ chưa có sẽ được tạo khi đăng.</p>' +
         "</div>" +
         (isNew ? '<div class="sec"><label class="field"><span>Ảnh bìa</span><input type="file" name="cover" accept="image/jpeg,image/png,image/gif,image/webp"></label></div>' : "") +
         '<div class="sec"><label class="field"><span>Chú thích ảnh bìa (alt)</span><input class="input" name="cover_alt" value="' + esc(p.cover_alt) + '"></label></div>' +
@@ -668,6 +685,17 @@
       true
     );
     $("#editor input[name=title]").focus();
+    var siteId = p.site_id || (S.settings && S.settings.default_site_id);
+    var box = $("#catpick");
+    if (!siteId) { box.innerHTML = '<span class="hint">Chưa có site WordPress.</span>'; return; }
+    api("/sites/" + siteId + "/categories").then(function (cats) {
+      if (!$("#catpick")) return;
+      $("#catpick").innerHTML = cats.length ? cats.map(function (c) {
+        return '<button type="button" class="chip" data-act="add-cat" data-name="' + esc(c.name) + '">' + esc(c.name) + "</button>";
+      }).join("") : '<span class="hint">Site chưa có chuyên mục nào.</span>';
+    }).catch(function (e) {
+      if ($("#catpick")) $("#catpick").innerHTML = '<span class="hint warn">Chưa lấy được chuyên mục: ' + esc(e.message) + "</span>";
+    });
   }
 
   function saveEditor() {
@@ -832,6 +860,12 @@
       case "preview": openPreview(cur); break;
       case "edit": openEditor(cur); break;
       case "save-editor": saveEditor(); break;
+      case "add-cat":
+        var ci = $("#editor input[name=categories]");
+        var list = ci.value.split(",").map(function (x) { return x.trim(); }).filter(Boolean);
+        if (list.indexOf(el.dataset.name) < 0) list.push(el.dataset.name);
+        ci.value = list.join(", ");
+        break;
       case "save-time":
         var t = inputToMs($("#when").value, S.tz);
         if (!t) return toast("Chọn ngày giờ trước.", true);
