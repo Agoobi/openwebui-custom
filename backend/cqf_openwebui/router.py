@@ -12,6 +12,7 @@ Quan tri (dang nhap Open WebUI, vai tro admin; dung get_admin_user cua Open WebU
                                      Hop thu), chay ca khi chatbot dang tat
     GET /test/sessions, GET /test/session, DELETE /test/session   lich su thu (tren server, theo quan tri vien)
     POST /zalo/webhook               kenh Zalo OA (Zalo goi, kiem chu ky); GET /settings/zalo (quan tri)
+    /lich/*                          Lich dang (bai WordPress hen gio): xem cqf_openwebui/lich/router.py
 """
 import asyncio, json, logging, tempfile, time
 from collections import defaultdict, deque
@@ -29,8 +30,10 @@ from .knowledge import Knowledge
 from .syserrors import SysErrors
 from .testlog import TestLog
 from . import zalo
+from .lich.router import router as lich_router
 
 router = APIRouter()
+router.include_router(lich_router, prefix="/lich")  # Lich dang: /api/v1/cqf/lich/*
 logger = logging.getLogger("cqf_openwebui.router")
 STATIC = Path(__file__).parent / "static"
 VID_OK = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-")

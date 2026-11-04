@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<!-- Mo rieng (link cu, bookmark, Ctrl+bam): ve Open WebUI de giu sidebar; ?standalone=1 de mo rieng -->
+<script>
+if (window.top === window && !/[?&]standalone/.test(location.search)) {
+  var post = (/post=([a-z0-9]+)/.exec(location.hash + location.search) || [])[1];
+  location.replace('/#lich-dang' + (post ? '/post=' + post : ''));
+}
+// Sang / toi theo cai dat cua Open WebUI (localStorage.theme), giong cqf/ui.js
+(function () {
+  var t = 'system';
+  try { t = localStorage.getItem('theme') || 'system'; } catch (e) {}
+  var dark = t === 'dark' || t === 'oled-dark' || (t === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
+  document.documentElement.classList.toggle('dark', dark);
+})();
+</script>
+<title>Lịch đăng · Open WebUI</title>
+<link rel="icon" href="/static/favicon.png">
+<!-- Lich dang: bai WordPress hen gio. Xem tuan / thang / danh sach, keo tha doi gio, dang that / luu nhap, mui gio,
+     khung gio dang, ket noi WordPress (application password). Backend: /api/v1/cqf/lich (cqf_openwebui/lich). -->
+<link rel="stylesheet" href="/static/lich-dang/lich-dang.css?v=2">
+</head>
+<body>
+<div id="root" class="app"></div>
+<div id="layer"></div>
+<div id="toasts" class="toasts"></div>
+<script src="/static/lich-dang/icons.js?v=1"></script>
+<script src="/static/lich-dang/lich-dang.js?v=4"></script>
+</body>
+</html>
