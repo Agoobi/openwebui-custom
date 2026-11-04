@@ -773,7 +773,10 @@
         "<dt>Máy gửi bài</dt><dd>" + (w.last_tick_at ? "Chạy, lần gần nhất " + esc(rel(ms(w.last_tick_at))) : "Chưa chạy") + "</dd>" +
         "<dt>Gửi gần nhất</dt><dd>" + (w.last_sent_at ? esc(longTime(ms(w.last_sent_at), S.tz)) : "Chưa có") + "</dd>" +
         "<dt>Lịch Open WebUI</dt><dd>" + (w.mirror_error ? '<span class="error-text">' + esc(w.mirror_error) + "</span>" : (w.mirror_at ? "Đồng bộ " + esc(rel(ms(w.mirror_at))) : "Chưa đồng bộ")) + "</dd>" +
-        "<dt>IP máy chủ</dt><dd>" + esc(S.me.server_ip || "?") + "</dd>" +
+        "<dt>IP máy chủ</dt><dd>" + esc(S.me.server_ip || "?") + "<small>Hosting có tường lửa thì cho IP này vào danh sách cho phép</small></dd>" +
+        "<dt>Agent</dt><dd>" + (S.me.agent && S.me.agent.works_for_me ? "Đang làm việc cho bạn" : "Đang làm việc cho người khác") +
+          "<small>Agent tạo bài, xem trước, hẹn giờ khi bạn đồng ý trong chat; không sửa site hay cài đặt</small>" +
+          (S.me.agent && !S.me.agent.works_for_me ? '<button class="btn sm" style="margin-top:6px" data-act="claim-agent">Agent làm việc cho tôi</button>' : "") + "</dd>" +
         "<dt>Bạn</dt><dd>" + esc(S.me.user.name) + "</dd></dl>" +
         (w.last_error ? '<p class="error-text">' + esc(w.last_error) + "</p>" : "");
     }
@@ -860,6 +863,10 @@
       case "preview": openPreview(cur); break;
       case "edit": openEditor(cur); break;
       case "save-editor": saveEditor(); break;
+      case "claim-agent":
+        api("/agent", { method: "POST" }).then(function () { toast("Từ giờ Agent làm việc cho bạn."); return refresh().then(function () { openSettings("status"); }); })
+          .catch(function (x) { toast(x.message, true); });
+        break;
       case "add-cat":
         var ci = $("#editor input[name=categories]");
         var list = ci.value.split(",").map(function (x) { return x.trim(); }).filter(Boolean);
