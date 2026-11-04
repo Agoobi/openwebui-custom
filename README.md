@@ -62,7 +62,17 @@ Script: chép trang tĩnh, thêm `cqf_openwebui.pth` vào venv, thêm drop-in sy
 mỗi lần nâng cấp Open WebUI. Gỡ: xoá `/etc/systemd/system/open-webui.service.d/cqf.conf`, `daemon-reload`, restart.
 
 Sau khi cài: mở Open WebUI → **Chatbot**: điền LLM, thông tin shop, website, bật; **Kiến thức**: tải tài liệu lên;
-dán mã nhúng vào website.
+dán mã nhúng vào website. **Lịch đăng** → Cài đặt: kết nối site WordPress (Application Password).
+
+Hermes trả lời trong Open WebUI qua API server, mà Hermes mặc định coi API server là "chữ thường, không Markdown" (bảng,
+ảnh, chữ đậm bị bỏ). Chạy thêm một lần để Hermes dùng Markdown trong Open WebUI (chỉ đổi kênh API server):
+
+```bash
+sudo /opt/openwebui-custom/deploy/hermes-openwebui.sh            # mặc định HERMES_HOME=/root/.hermes
+```
+
+Agent viết bài và hẹn giờ qua Lịch đăng: skill `viet-bai-website-wordpress` (bản 0.2.0) trong
+[skills-hubs](https://github.com/Agoobi/skills-hubs).
 
 ## API (`/api/v1/cqf`)
 
