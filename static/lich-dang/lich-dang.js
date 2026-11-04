@@ -229,10 +229,10 @@
 
     root.innerHTML =
       '<header class="topbar">' +
-        '<nav class="crumbs">' + (EMBED ? '<button class="btn icon ghost sb-toggle" data-act="sidebar" title="Mở sidebar">' + icon("panel-left") + "</button>" : '<a href="/#lich-dang">' + icon("arrow-left") + "Open WebUI</a><span>/</span>") + "<strong>Lịch đăng</strong></nav>" +
+        '<nav class="crumbs">' + (EMBED ? '<button class="btn icon ghost sb-toggle" data-act="sidebar" title="Mở sidebar">' + icon("panel-left") + "</button>" : '<a href="/#lich-dang" title="Về Open WebUI">' + icon("arrow-left") + "<span>Open WebUI</span></a><span>/</span>") + "<strong>Lịch đăng</strong></nav>" +
         '<div class="spacer"></div>' +
-        '<button class="btn ghost" data-act="rules">' + icon("book-open") + "Quy tắc</button>" +
-        '<button class="btn" data-act="settings">' + icon("settings") + "Cài đặt</button>" +
+        '<button class="btn ghost" data-act="rules" title="Quy tắc">' + icon("book-open") + '<span class="label">Quy tắc</span></button>' +
+        '<button class="btn" data-act="settings" title="Cài đặt">' + icon("settings") + '<span class="label">Cài đặt</span></button>' +
         '<button class="btn primary" data-act="new">' + icon("plus") + 'Viết bài <kbd>N</kbd></button>' +
       "</header>" +
       '<main class="main">' +
@@ -418,7 +418,8 @@
       var k = dayKey(partsOf(ms(p.publish_at), S.tz));
       (byDay[k] = byDay[k] || []).push(p);
     });
-    var html = '<div class="month">' + [1, 2, 3, 4, 5, 6, 7].map(function (d) { return '<div class="dow">' + DAY_SHORT[d] + "</div>"; }).join("");
+    var html = '<div class="month-head">' + [1, 2, 3, 4, 5, 6, 7].map(function (d) { return '<div class="dow">' + DAY_SHORT[d] + "</div>"; }).join("") +
+      '</div><div class="month">';
     for (var i = 0; i < 42; i++) {
       var d = addDays(r.start, i);
       var k = dayKey(d);
