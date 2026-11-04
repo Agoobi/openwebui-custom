@@ -1,12 +1,13 @@
 /*
  * Open WebUI custom loader (Agoobi). Open WebUI tu nap file nay tren moi trang (/static/loader.js).
- * Them 4 hang vao sidebar, ngay duoi hang Search: Hop thu (kem so khach can xu ly), Chatbot (cai dat), Thu chatbot, Kien thuc.
+ * Them 5 hang vao sidebar, ngay duoi hang Search: Hop thu (kem so khach can xu ly), Chatbot (cai dat), Thu chatbot, Kien thuc,
+ * Lich dang (bai WordPress hen gio; #lich-dang/post=<id> mo thang 1 bai).
  * Bam 1 hang thi trang tuong ung mo trong vung noi dung, sidebar giu nguyen (Ctrl/Cmd + bam: tab moi, cung co sidebar).
  * Du lieu: backend cqf_openwebui chay trong Open WebUI (/api/v1/cqf). Khong sua gi khac cua Open WebUI.
  * Bam vao cau truc sidebar cua Open WebUI 0.11.4 (#sidebar-search-button): nang ban thi kiem lai.
  */
 (() => {
-	const V = 13; // doi khi doi trang de khong dinh cache
+	const V = 14; // doi khi doi trang de khong dinh cache
 	const icon = (d) =>
 		`<svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 	const PAGES = [
@@ -17,13 +18,21 @@
 		{ hash: 'thu-chat', label: 'Thử chatbot', src: '/static/thu-chat/index.html',
 			icon: icon('<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="m10 8 4 2.5-4 2.5z"/>') },
 		{ hash: 'kien-thuc', label: 'Kiến thức', src: '/static/kien-thuc/index.html',
-			icon: icon('<path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/><path d="M8 7h8M8 11h6"/>') }
+			icon: icon('<path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/><path d="M8 7h8M8 11h6"/>') },
+		{ hash: 'lich-dang', label: 'Lịch đăng', src: '/static/lich-dang/index.html',
+			icon: icon('<path d="M8 2v4M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="m9 16 2 2 4-4"/>') }
 	];
 	let todo = 0;
 	let frame = null;
 	let openHash = null;
 
-	const current = () => PAGES.find((p) => location.hash === `#${p.hash}`) || null;
+	// #lich-dang/post=abc: trang lich-dang, phan sau dau / chuyen vao iframe (?post=abc)
+	const current = () => PAGES.find((p) => location.hash === `#${p.hash}` || location.hash.startsWith(`#${p.hash}/`)) || null;
+	const subpath = () => {
+		const rest = location.hash.split('/').slice(1).join('/');
+		const m = /^post=([a-z0-9]+)$/.exec(rest);
+		return m ? `&post=${m[1]}` : '';
+	};
 
 	// ------------------------------------------------------------ hang trong sidebar
 	const addRows = () => {
@@ -89,7 +98,7 @@
 			frame = document.createElement('iframe');
 			frame.id = 'cqf-inbox-frame';
 			frame.title = page.label;
-			frame.src = `${page.src}?embed=1&v=${V}`;
+			frame.src = `${page.src}?embed=1&v=${V}${subpath()}`;
 			document.body.append(frame);
 			openHash = page.hash;
 			place();
@@ -115,6 +124,10 @@
 		if (e.origin !== location.origin || !frame || e.source !== frame.contentWindow) return;
 		if (e.data?.type === 'cqf-inbox-count') { todo = Number(e.data.todo) || 0; paintCount(); }
 		else if (e.data?.type === 'cqf-toggle-sidebar') document.getElementById('sidebar-toggle-button')?.click();
+		else if (e.data?.type === 'cqf-hash' && openHash && String(e.data.hash).split('/')[0] === openHash) {
+			// trang trong iframe doi link (vd mo 1 bai): sua thanh dia chi, khong nap lai iframe
+			history.replaceState(history.state, '', `${location.pathname}${location.search}#${e.data.hash}`);
+		}
 	});
 
 	// ------------------------------------------------------------ so khach can xu ly (moi phut)
