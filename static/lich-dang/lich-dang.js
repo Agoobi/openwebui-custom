@@ -199,6 +199,8 @@
   function wpMark(size) {
     return '<span class="mark ' + (size || "xs") + '"><img src="/static/lich-dang/wordpress.svg" alt="WordPress"></span>';
   }
+  function host(url) { return String(url || "").replace(/^https?:\/\//, "").replace(/\/.*$/, ""); }
+
   function stateBadge(p) {
     var label = p.state_label;
     if (p.state === "sent" && p.wp_status && p.wp_status !== "publish") label = "Đã vào nháp WordPress";
@@ -237,10 +239,11 @@
       "</header>" +
       '<main class="main">' +
         '<div class="lede"><p>Bài viết blog theo ngày. Bấm ô trống để hẹn bài, kéo bài đã hẹn để đổi giờ. Bài được giữ ở đây và đúng giờ mới gửi lên WordPress.</p></div>' +
-        broken.map(function (s) {
-          return '<div class="banner">' + icon("shield-alert") + "<p><strong>" + esc(s.name) + " chưa kết nối được.</strong> " + esc(s.check_error || "") + "</p>" +
-            '<button class="btn sm" data-act="check-site" data-id="' + s.id + '">' + icon("refresh-cw") + "Kiểm tra lại</button></div>";
-        }).join("") +
+        (broken.length ? '<div class="banner slim">' + icon("shield-alert") + "<p><strong>" +
+          (broken.length === 1 ? esc(host(broken[0].url)) + " chưa kết nối được" : broken.length + " site chưa kết nối được") +
+          '</strong> <span class="why" title="' + esc(broken.map(function (s) { return s.name + ": " + (s.check_error || ""); }).join("\n")) + '">' +
+          esc(broken.length === 1 ? broken[0].check_error || "" : broken.map(function (s) { return host(s.url); }).join(", ")) + "</span></p>" +
+          '<button class="btn sm" data-act="settings" data-tab="sites">Xem và kiểm tra lại</button></div>' : "") +
         (S.sites.length ? "" : '<div class="banner">' + icon("plug") + "<p><strong>Chưa có site WordPress nào.</strong> Thêm site và application password để bài đi được.</p>" +
           '<button class="btn sm" data-act="settings" data-tab="sites">Kết nối WordPress</button></div>') +
         '<div class="toolbar">' +
@@ -263,7 +266,7 @@
           '<div class="spacer"></div>' +
           (S.sites.length > 1 ? '<button class="chip ' + (S.siteFilter === "all" ? "on" : "") + '" data-act="site" data-id="all">Tất cả site</button>' +
             S.sites.map(function (s) {
-              return '<button class="chip ' + (S.siteFilter === s.id ? "on" : "") + '" data-act="site" data-id="' + s.id + '">' + wpMark() + esc(s.name) +
+              return '<button class="chip ' + (S.siteFilter === s.id ? "on" : "") + '" data-act="site" data-id="' + s.id + '" title="' + esc(s.name) + '">' + wpMark() + esc(host(s.url)) +
                 ' <span class="count">' + (counts[s.id] || 0) + "</span></button>";
             }).join("") : "") +
           '<div class="seg">' +
@@ -407,7 +410,7 @@
       "</div></div>";
     var scroller = $("#wscroll");
     var keep = S.weekScroll;
-    scroller.scrollTop = keep != null ? keep : Math.max(0, (inWeek ? np2.h - 2 : 7) * HOUR_PX);
+    scroller.scrollTop = keep != null ? keep : Math.max(0, (inWeek ? np2.h - 1 : 7) * HOUR_PX);
     scroller.addEventListener("scroll", function () { S.weekScroll = scroller.scrollTop; });
   }
 
