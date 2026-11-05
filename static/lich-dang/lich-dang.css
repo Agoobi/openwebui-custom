@@ -71,7 +71,8 @@ svg.lucide { width: 16px; height: 16px; flex: none; }
 @media (max-width: 760px) { .embed .sb-toggle { display: inline-flex; } }
 
 /* Shell */
-.app { display: flex; flex-direction: column; height: 100vh; min-width: 0; }
+/* The page scrolls; the calendar keeps almost a full screen of height however many notices sit above it. */
+.app { display: flex; flex-direction: column; min-height: 100vh; min-width: 0; }
 .topbar {
   display: flex; align-items: center; gap: 12px; padding: 12px 20px; border-bottom: 1px solid var(--border);
 }
@@ -80,8 +81,8 @@ svg.lucide { width: 16px; height: 16px; flex: none; }
 .crumbs a:hover { color: var(--fg); }
 .crumbs strong { color: var(--fg); font-weight: 600; white-space: nowrap; }
 .spacer { flex: 1; }
-.main { flex: 1; display: flex; flex-direction: column; min-height: 0; padding: 16px 20px 20px; gap: 12px; }
-.lede { display: flex; align-items: center; gap: 12px; color: var(--fg-muted); }
+.main { flex: 1; display: flex; flex-direction: column; padding: 12px 20px 20px; gap: 10px; }
+.lede { display: flex; align-items: center; gap: 12px; color: var(--fg-muted); font-size: 13px; }
 .lede p { margin: 0; flex: 1; }
 
 /* Buttons and controls */
@@ -150,10 +151,13 @@ kbd {
   background: var(--failed-bg); color: var(--failed); border: 1px solid color-mix(in srgb, var(--failed) 30%, transparent);
 }
 .banner p { margin: 0; flex: 1; color: var(--fg); }
+.banner.slim { padding: 6px 10px; }
+.banner.slim p { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.banner.slim .why { color: var(--fg-muted); }
 .banner strong { color: var(--failed); }
 
 /* Body: calendar + unscheduled column */
-.body { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 16px; min-height: 0; }
+.body { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 16px; height: max(640px, calc(100vh - 150px)); }
 .cal { border: 1px solid var(--border); border-radius: var(--radius); min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 
 /* Week view */
@@ -343,7 +347,7 @@ dl.facts > :nth-last-child(-n+2) { border-bottom: 0; }
 
 @media (max-width: 900px) {
   .app { height: auto; min-height: 100vh; }
-  .body { grid-template-columns: minmax(0, 1fr); }
+  .body { grid-template-columns: minmax(0, 1fr); height: auto; }
   .cal { height: 72vh; }
   .side { max-height: 320px; }
   .topbar .btn .label, .topbar kbd, .crumbs a span { display: none; }
