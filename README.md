@@ -14,7 +14,7 @@ Sidebar Open WebUI có thêm 5 mục (dưới Search), mở ngay trong vùng n�
 | **Kênh Zalo OA** (trên trang Chatbot) | Khách nhắn Zalo OA, bot trả lời ngay trong Zalo (cùng kiến thức, cách tư vấn; không bảng / Markdown). Nhân viên trả lời khách trong Zalo thì bot im với khách đó N giờ. Tin vào Hộp thư, kênh "Zalo OA". Webhook `POST /api/v1/cqf/zalo/webhook` (kiểm chữ ký bằng OA Secret Key). App ID, App Secret, OA Secret Key nhập trên trang Chatbot; token OA nạp ở đó và lưu `cqf/zalo/tokens.json`. Công cụ khác dùng cùng OA (vd skill `viet-bai-zalo-oa` của Hermes) phải dùng chung file này, ví dụ symlink `~/.hermes/zalo` → `cqf/zalo` (refresh token Zalo chỉ dùng 1 lần). |
 | **Thử chatbot** | Chat với bot như khách (cùng cài đặt, kiến thức đang bật; chạy cả khi chatbot đang tắt trên website). Bên phải là "Bot đã làm gì" cho từng câu trả lời: các câu tra tự động, đoạn tài liệu đưa cho bot, công cụ bot gọi thêm và kết quả, số liệu bị chặn. Tin thử lưu riêng trên server (`cqf/test/`, theo từng quản trị viên), không vào Hộp thư; nút **Lịch sử** mở lại các cuộc thử trước, máy / trình duyệt nào cũng thấy. |
 | **Kiến thức** | Kiểu Obsidian: tải file Word / Excel / CSV / PDF có chữ / TXT / MD lên (kéo thả được) thành ghi chú, xem / sửa Markdown, `[[liên kết]]` giữa ghi chú, mục lục, ghi chú trỏ tới, bật/tắt từng ghi chú, cảnh báo khi số liệu sửa tay khác file gốc, **thử tìm như bot**. |
-| **Lịch đăng** | Lịch bài blog WordPress: xem **Tuần / Tháng / Danh sách**, chọn **múi giờ** xem, lọc Sắp đăng / Đã đăng / Lỗi, cột **Chưa lên lịch** (kéo vào lịch để hẹn), bấm ô trống để hẹn bài vào giờ đó, kéo bài đã hẹn để đổi giờ. Bấm 1 bài: xem trước như trên web, ảnh bìa, đổi giờ, **khung giờ trống kế tiếp**, **Đăng thật / Lưu nháp trên WordPress**, huỷ lịch (bài về Chưa lên lịch), thử lại khi lỗi, lịch sử. **Cài đặt**: kết nối nhiều site WordPress (Application Password, kiểm tra kết nối, mã hoá khi lưu), múi giờ, chế độ mặc định, site mặc định, **khung giờ đăng** hằng tuần. **Quy tắc** viết sẵn trên trang. Mỗi người dùng Open WebUI có lịch, site, cài đặt riêng. |
+| **Lịch đăng** | Lịch bài WordPress và Zalo OA: xem **Tuần / Tháng / Danh sách**, chọn **múi giờ** xem, lọc Sắp đăng / Đã đăng / Lỗi, cột **Chưa lên lịch** (kéo vào lịch để hẹn), bấm ô trống để hẹn bài vào giờ đó, kéo bài đã hẹn để đổi giờ. Bấm 1 bài: xem trước như trên web, ảnh bìa, đổi giờ, **khung giờ trống kế tiếp**, **Đăng thật / Lưu nháp trên WordPress**, huỷ lịch (bài về Chưa lên lịch), thử lại khi lỗi, lịch sử. **Cài đặt**: kết nối nhiều site WordPress (Application Password, kiểm tra kết nối, mã hoá khi lưu), múi giờ, chế độ mặc định, site mặc định, **khung giờ đăng** hằng tuần. **Quy tắc** viết sẵn trên trang. Mỗi người dùng Open WebUI có lịch, site, cài đặt riêng. |
 
 ## Lịch đăng
 
@@ -25,6 +25,13 @@ Sidebar Open WebUI có thêm 5 mục (dưới Search), mở ngay trong vùng n�
   không tạo bài trùng. Sai mật khẩu, thiếu quyền, chuyên mục không có: báo Lỗi ngay. Tường lửa hosting chặn IP máy chủ:
   trang báo rõ IP cần cho phép.
 - Mọi thời điểm lưu theo UTC; giờ nhập và hiển thị theo múi giờ chọn.
+- **Zalo OA** cũng là một nơi đăng: OA đã kết nối ở trang Chatbot → Kênh Zalo OA (dùng chung kho token
+  `cqf/zalo/tokens.json` và khoá file, vì refresh token Zalo chỉ dùng được 1 lần) được thêm trong Lịch đăng → Cài đặt →
+  Kết nối. Tới giờ máy chủ tạo bài (article) trên OA: **Hiện ngay** (`show`) hoặc **Tạo bài ẩn** (`hide`, chủ OA tự
+  bật). Không gửi broadcast. Bài Zalo chỉ có chữ và ảnh; Lịch đăng kiểm khi hẹn: phải có ảnh bìa, tiêu đề ≤ 150, mô tả
+  ≤ 300 ký tự. Zalo tải ảnh qua link công khai có chữ ký, hết hạn sau 6 giờ, trên `WEBUI_URL` (phải là https công
+  khai); ảnh > 1 MB được thu nhỏ. Mã chờ của Zalo (`article/create`) được giữ để lần thử lại hỏi tiếp (`verify`,
+  kể cả khi Zalo trả `-214` đang xử lý ảnh) thay vì tạo bài thứ hai.
 - Đồng bộ 2 chiều với **Lịch** của Open WebUI: lịch "Lịch đăng bài" (mỗi bài 1 sự kiện, màu theo trạng thái) và
   "Khung giờ đăng" (sự kiện lặp hằng tuần). Kéo sự kiện sang giờ khác = đổi giờ đăng; xoá sự kiện = huỷ lịch.
 - Agent (Hermes cùng máy, skill `viet-bai-website-wordpress` trong
@@ -71,7 +78,7 @@ Hermes trả lời trong Open WebUI qua API server, mà Hermes mặc định coi
 sudo /opt/openwebui-custom/deploy/hermes-openwebui.sh            # mặc định HERMES_HOME=/root/.hermes
 ```
 
-Agent viết bài và hẹn giờ qua Lịch đăng: skill `viet-bai-website-wordpress` (bản 0.2.0) trong
+Agent viết bài và hẹn giờ qua Lịch đăng: skill `viet-bai-website-wordpress` và `viet-bai-zalo-oa` (bản 0.2.0) trong
 [skills-hubs](https://github.com/Agoobi/skills-hubs).
 
 ## API (`/api/v1/cqf`)
