@@ -271,7 +271,7 @@
           '<button class="chip gold" data-act="settings" data-tab="slots" title="Khung giờ đăng">' + icon("star") + "Khung giờ đăng: " + esc(slotsText) + "</button>" +
           (S.tz !== S.settings.timezone ? '<button class="chip" data-act="tz-default">' + icon("pin") + "Đặt " + esc(S.tz) + " làm mặc định</button>" : "") +
           '<div class="spacer"></div>' +
-          (S.sites.length > 1 ? '<button class="chip ' + (S.siteFilter === "all" ? "on" : "") + '" data-act="site" data-id="all">Tất cả site</button>' +
+          (S.sites.length > 1 ? '<button class="chip ' + (S.siteFilter === "all" ? "on" : "") + '" data-act="site" data-id="all">Tất cả nơi đăng</button>' +
             S.sites.map(function (s) {
               return '<button class="chip ' + (S.siteFilter === s.id ? "on" : "") + '" data-act="site" data-id="' + s.id + '" title="' + esc(s.name) + '">' + markFor(s) + esc(siteLabel(s)) +
                 ' <span class="count">' + (counts[s.id] || 0) + "</span></button>";
