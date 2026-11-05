@@ -1,5 +1,7 @@
 """What can happen to a post, a site and the settings. API, agent and worker all go through here."""
 
+import hashlib
+import hmac
 import re
 import unicodedata
 import uuid
@@ -9,6 +11,7 @@ from pathlib import Path
 from fastapi import HTTPException
 
 from . import config, db, timeutil
+from . import zalo_oa
 from .secrets_box import open_secret, seal
 from .wordpress import WordPress, WpError, normalize_url
 
@@ -97,6 +100,10 @@ def _site_public(row) -> dict:
         "checked_at": timeutil.iso_utc(row["checked_at"]),
         "check_ok": None if row["check_ok"] is None else bool(row["check_ok"]),
         "check_error": row["check_error"],
+        "kind": row["kind"],
+        "kind_label": config.KIND_LABELS[row["kind"]],
+        "oa_id": row["external_id"] if row["kind"] == "zalo_oa" else None,
+        "options": db.loads(row["options"], {}),
     }
 
 
@@ -119,6 +126,8 @@ def save_site(actor: Actor, site_id: str | None, data: dict) -> dict:
     existing = _site_row(actor.user_id, site_id) if site_id else None
     if site_id and not existing:
         raise Refused("Không thấy site này.", 404)
+    if existing and existing["kind"] != "wordpress":
+        raise Refused("Đây là Zalo OA, không phải site WordPress.")
     try:
         url = normalize_url(str(data.get("url") or (existing["url"] if existing else "")))
     except WpError as error:
@@ -176,8 +185,11 @@ def check_site(actor: Actor, site_id: str) -> dict:
     error_text = None
     info = None
     try:
-        with client_for(row) as wp:
-            info = wp.check()
+        if row["kind"] == "zalo_oa":
+            zalo_oa.Client(row["external_id"]).check()
+        else:
+            with client_for(row) as wp:
+                info = wp.check()
     except (WpError, RuntimeError) as error:
         error_text = getattr(error, "message", str(error))
     with db.tx() as conn:
@@ -193,10 +205,61 @@ def check_site(actor: Actor, site_id: str) -> dict:
     return result
 
 
+def zalo_candidates(actor: Actor) -> list[dict]:
+    """Zalo OAs connected on this server (trang Chatbot > Kênh Zalo OA), and whether this user already added them."""
+    mine = {r["external_id"] for r in db.query("SELECT external_id FROM sites WHERE user_id=? AND kind='zalo_oa'",
+                                               (actor.user_id,))}
+    return [{**oa, "added": oa["oa_id"] in mine} for oa in zalo_oa.connected_oas()]
+
+
+def add_zalo_site(actor: Actor, oa_id: str, author: str | None, comment: str | None) -> dict:
+    if actor.is_agent:
+        raise Refused(config.RULE_TEXT["agent"], 403)
+    oa = next((o for o in zalo_oa.connected_oas() if o["oa_id"] == str(oa_id)), None)
+    if oa is None:
+        raise Refused("OA này chưa kết nối trên máy chủ. Nạp token OA ở trang Chatbot > Kênh Zalo OA trước.", 404)
+    if db.one("SELECT 1 FROM sites WHERE user_id=? AND kind='zalo_oa' AND external_id=?", (actor.user_id, oa["oa_id"])):
+        raise Refused("OA này đã có trong Lịch đăng.", 409)
+    options = {"author": (author or oa["name"])[:50], "comment": comment if comment in ("show", "hide") else "show"}
+    error_text = None
+    try:
+        zalo_oa.Client(oa["oa_id"]).check()
+    except WpError as error:
+        error_text = error.message
+    stamp = timeutil.now()
+    site_id = uuid.uuid4().hex
+    with db.tx() as conn:
+        conn.execute(
+            "INSERT INTO sites (id, user_id, name, url, username, secret, kind, external_id, options, checked_at, "
+            "check_ok, check_error, created_at, updated_at) VALUES (?,?,?,?,'',?, 'zalo_oa', ?,?,?,?,?,?,?)",
+            (site_id, actor.user_id, oa["name"], zalo_oa.MANAGE_URL, seal(""), oa["oa_id"], db.dumps(options), stamp,
+             0 if error_text else 1, error_text, stamp, stamp),
+        )
+    return _site_public(_site_row(actor.user_id, site_id))
+
+
+def update_zalo_site(actor: Actor, site_id: str, author: str | None, comment: str | None) -> dict:
+    if actor.is_agent:
+        raise Refused(config.RULE_TEXT["agent"], 403)
+    row = _site_row(actor.user_id, site_id)
+    if not row or row["kind"] != "zalo_oa":
+        raise Refused("Không thấy Zalo OA này.", 404)
+    options = db.loads(row["options"], {})
+    if author is not None:
+        options["author"] = author.strip()[:50] or row["name"][:50]
+    if comment in ("show", "hide"):
+        options["comment"] = comment
+    with db.tx() as conn:
+        conn.execute("UPDATE sites SET options=?, updated_at=? WHERE id=?", (db.dumps(options), timeutil.now(), site_id))
+    return _site_public(_site_row(actor.user_id, site_id))
+
+
 def site_categories(actor: Actor, site_id: str) -> list[dict]:
     row = _site_row(actor.user_id, site_id)
     if not row:
         raise Refused("Không thấy site này.", 404)
+    if row["kind"] != "wordpress":
+        return []
     try:
         with client_for(row) as wp:
             return wp.categories()
@@ -242,8 +305,21 @@ def _row(user_id: str, post_id: str):
     return row
 
 
+def _kind_of(site_id: str | None) -> str:
+    row = db.one("SELECT kind FROM sites WHERE id=?", (site_id,)) if site_id else None
+    return row["kind"] if row else "wordpress"
+
+
+def mode_label(kind: str, mode: str) -> str:
+    return config.MODE_LABELS_BY_KIND.get(kind, config.MODE_LABELS)[mode]
+
+
 def post_public(row, with_body: bool = False) -> dict:
+    kind = _kind_of(row["site_id"])
     data = {
+        "channel": kind,
+        "channel_label": config.KIND_LABELS[kind],
+        "ext_id": row["ext_id"],
         "id": row["id"],
         "title": row["title"],
         "excerpt": row["excerpt"],
@@ -255,7 +331,7 @@ def post_public(row, with_body: bool = False) -> dict:
         "state": row["state"],
         "state_label": config.STATE_LABELS[row["state"]],
         "mode": row["mode"],
-        "mode_label": config.MODE_LABELS[row["mode"]],
+        "mode_label": mode_label(kind, row["mode"]),
         "site_id": row["site_id"],
         "publish_at": timeutil.iso_utc(row["publish_at"]),
         "attempts": row["attempts"],
@@ -517,19 +593,23 @@ def schedule(actor: Actor, post_id: str, when, tz_name: str | None, mode: str | 
         raise Refused("Chế độ đăng phải là publish hoặc draft.")
     site_id = row["site_id"] or settings["default_site_id"]
     if not site_id:
-        raise Refused("Chưa có site WordPress nào. Vào Cài đặt → Kết nối WordPress để thêm site trước.")
+        raise Refused("Chưa có nơi đăng nào. Vào Cài đặt → Kết nối để thêm site WordPress hoặc Zalo OA trước.")
     if not row["html"].strip():
         raise Refused("Bài chưa có nội dung.")
+    kind = _kind_of(site_id)
+    if kind == "zalo_oa":
+        _zalo_ready(row)
     with db.tx() as conn:
         changed = conn.execute(
             "UPDATE posts SET state='scheduled', publish_at=?, mode=?, site_id=?, attempts=0, next_try_at=NULL, "
-            "error=NULL, updated_at=? WHERE id=? AND NOT (state='sending' AND next_try_at IS NULL) AND state<>'sent'",
+            "error=NULL, updated_at=? "
+            "WHERE id=? AND NOT (state='sending' AND next_try_at IS NULL) AND state<>'sent'",
             (moment, new_mode, site_id, timeutil.now(), post_id),
         ).rowcount
         if changed == 0:
             raise Refused("Bài vừa bắt đầu được gửi lên WordPress, không đổi được nữa.", 409)
         verb = "Đổi giờ đăng" if row["state"] == "scheduled" else "Lên lịch"
-        _history(conn, post_id, actor, f"{verb}: {timeutil.describe(moment, tz)} · {config.MODE_LABELS[new_mode]}")
+        _history(conn, post_id, actor, f"{verb}: {timeutil.describe(moment, tz)} · {mode_label(kind, new_mode)}")
     return get_post(actor.user_id, post_id)
 
 
@@ -541,7 +621,7 @@ def set_mode(actor: Actor, post_id: str, mode: str) -> dict:
     if mode != row["mode"]:
         with db.tx() as conn:
             conn.execute("UPDATE posts SET mode=?, updated_at=? WHERE id=?", (mode, timeutil.now(), post_id))
-            _history(conn, post_id, actor, "Đổi chế độ: " + config.MODE_LABELS[mode])
+            _history(conn, post_id, actor, "Đổi chế độ: " + mode_label(_kind_of(row["site_id"]), mode))
     return get_post(actor.user_id, post_id)
 
 
@@ -604,6 +684,9 @@ def send(post_id: str) -> None:
     site = db.one("SELECT * FROM sites WHERE id=?", (row["site_id"],)) if row["site_id"] else None
     if site is None:
         raise WpError("Site WordPress của bài đã bị xoá khỏi Cài đặt.", permanent=True)
+    if site["kind"] == "zalo_oa":
+        _send_zalo(row, site)
+        return
 
     try:
         wp = client_for(site)
@@ -660,3 +743,129 @@ def send(post_id: str) -> None:
             _history(conn, post_id, "Máy chủ", f"Đã đăng lên {site['name']}: {link}")
         else:
             _history(conn, post_id, "Máy chủ", f"Đã lưu nháp trên {site['name']} (bài #{saved['id']}), chờ bạn bấm Đăng")
+
+
+# Zalo OA
+
+
+def _zalo_ready(row) -> None:
+    """What Zalo refuses, checked when the post is scheduled rather than at send time."""
+    problems = []
+    if len(row["title"]) > config.ZALO_LIMITS["title"]:
+        problems.append(f"tiêu đề {len(row['title'])} ký tự (tối đa {config.ZALO_LIMITS['title']})")
+    if len(row["excerpt"]) > config.ZALO_LIMITS["excerpt"]:
+        problems.append(f"mô tả ngắn {len(row['excerpt'])} ký tự (tối đa {config.ZALO_LIMITS['excerpt']})")
+    if not row["cover_file"]:
+        problems.append("chưa có ảnh bìa (Zalo bắt buộc)")
+    if not zalo_oa.html_to_blocks(row["html"]):
+        problems.append("nội dung trống")
+    if problems:
+        raise Refused("Bài Zalo OA chưa đăng được: " + "; ".join(problems) + ".")
+    if not config.PUBLIC_URL.startswith("https://"):
+        raise Refused("Zalo cần tải ảnh từ địa chỉ https công khai của Open WebUI, mà máy chủ chưa có WEBUI_URL https.")
+
+
+def _sign(post_id: str, name: str, expires: int) -> str:
+    message = f"{post_id}/{name}/{expires}".encode()
+    return hmac.new(config.SECRET_KEY.encode(), message, hashlib.sha256).hexdigest()[:32]
+
+
+def public_link(post_id: str, name: str) -> str:
+    expires = timeutil.now() + config.PUBLIC_LINK_SECONDS
+    return f"{config.PUBLIC_URL}/api/v1/cqf/lich/public/{post_id}/{name}?e={expires}&s={_sign(post_id, name, expires)}"
+
+
+def public_file(post_id: str, name: str, expires: int, signature: str) -> Path | None:
+    """A post image for Zalo to download, only through a signed link that has not expired."""
+    if expires < timeutil.now() or not hmac.compare_digest(signature, _sign(post_id, name, expires)):
+        return None
+    if not re.fullmatch(r"[A-Za-z0-9._-]+", name) or name.startswith("."):
+        return None
+    for path in (config.COVER_DIR / "zalo" / post_id / name, config.COVER_DIR / "media" / post_id / name,
+                 config.COVER_DIR / name):
+        if path.is_file() and (path.parent != config.COVER_DIR or name.startswith(post_id + "-")):
+            return path
+    return None
+
+
+def _zalo_image(post_id: str, path: Path) -> str:
+    """Public link to an image Zalo accepts (<= 1 MB; bigger ones get a smaller copy once)."""
+    data, extension = zalo_oa.shrink_image(path.read_bytes())
+    if not extension:
+        return public_link(post_id, path.name)
+    folder = config.COVER_DIR / "zalo" / post_id
+    folder.mkdir(parents=True, exist_ok=True)
+    small = folder / (path.stem + "-zalo" + extension)
+    if not small.exists():
+        small.write_bytes(data)
+    return public_link(post_id, small.name)
+
+
+def zalo_article(row, site) -> dict:
+    options = db.loads(site["options"], {})
+    blocks = []
+    for block in zalo_oa.html_to_blocks(row["html"]):
+        if block["type"] == "image":
+            url = block["url"]
+            if url.startswith(MEDIA_PREFIX):
+                name = url[len(MEDIA_PREFIX):].split("/", 1)[-1]
+                path = config.COVER_DIR / "media" / row["id"] / name
+                if not path.is_file():
+                    raise WpError(f"Ảnh {name} trong bài không còn trên máy chủ Lịch đăng.", permanent=True)
+                block = {**block, "url": _zalo_image(row["id"], path)}
+            elif not url.startswith("https://"):
+                continue  # Zalo only takes public https images; anything else is left out
+        blocks.append(block)
+    cover = config.COVER_DIR / (row["cover_file"] or "")
+    if not row["cover_file"] or not cover.is_file():
+        raise WpError("Bài Zalo OA cần ảnh bìa.", permanent=True)
+    article = {
+        "type": "normal",
+        "title": row["title"][: config.ZALO_LIMITS["title"]],
+        "author": (options.get("author") or site["name"])[:50],
+        "cover": {"cover_type": "photo", "photo_url": _zalo_image(row["id"], cover), "status": "show"},
+        "description": row["excerpt"][: config.ZALO_LIMITS["excerpt"]],
+        "body": blocks,
+        "status": "show" if row["mode"] == "publish" else "hide",
+        "comment": options.get("comment") or "show",
+    }
+    return article
+
+
+def _send_zalo(row, site) -> None:
+    client = zalo_oa.Client(site["external_id"])
+    article_id = row["ext_id"]
+    if not article_id:
+        token = row["zalo_token"]
+        if not token:
+            token = client.create(zalo_article(row, site))
+            # Kept at once: if Zalo is slow, the next try asks about this token instead of making a second article.
+            with db.tx() as conn:
+                conn.execute("UPDATE posts SET zalo_token=? WHERE id=?", (token, row["id"]))
+        try:
+            article_id = client.verify(token)
+        except WpError as error:
+            if getattr(error, "processing_failed", False):
+                # That article will never exist: the next try (after a fix) makes a new one.
+                with db.tx() as conn:
+                    conn.execute("UPDATE posts SET zalo_token=NULL WHERE id=?", (row["id"],))
+            raise
+        if not article_id:
+            raise WpError("Zalo đang xử lý bài, máy chủ sẽ hỏi lại sau ít phút (không tạo bài mới).")
+        with db.tx() as conn:
+            conn.execute("UPDATE posts SET ext_id=? WHERE id=?", (article_id, row["id"]))
+    detail = client.detail(article_id)
+    shown = detail.get("status") == "show"
+    link = detail.get("link") or detail.get("url") or None
+    stamp = timeutil.now()
+    with db.tx() as conn:
+        conn.execute(
+            "UPDATE posts SET state='sent', ext_id=?, wp_status=?, wp_url=?, wp_edit_url=?, sent_at=?, error=NULL, "
+            "next_try_at=NULL, updated_at=? WHERE id=?",
+            (article_id, "publish" if shown else "draft", link if shown else None, zalo_oa.MANAGE_URL, stamp, stamp,
+             row["id"]),
+        )
+        if shown:
+            _history(conn, row["id"], "Máy chủ", f"Đã hiện bài trên Zalo OA {site['name']}" + (f": {link}" if link else ""))
+        else:
+            _history(conn, row["id"], "Máy chủ", f"Đã tạo bài ẩn trên Zalo OA {site['name']}, chờ chủ OA bật hiển thị")

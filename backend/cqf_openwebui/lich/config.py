@@ -117,6 +117,10 @@ def save_agent(data: dict) -> None:
 
 
 SERVER_PUBLIC_IP = _server_ip()
+# Public https address of this Open WebUI (WEBUI_URL). Zalo downloads a post's images from here while it processes
+# the article, through signed links that expire (PUBLIC_LINK_SECONDS).
+PUBLIC_URL = (os.environ.get("LICH_PUBLIC_URL") or os.environ.get("WEBUI_URL") or "").rstrip("/")
+PUBLIC_LINK_SECONDS = 6 * 3600
 BASE_PATH = "/#lich-dang"
 USER_AGENT = "LichDang/1.0 (+openwebui-custom; WordPress REST scheduler)"
 
@@ -152,6 +156,13 @@ STATE_LABELS = {
     "failed": "Lỗi",
 }
 MODE_LABELS = {"publish": "Đăng thật", "draft": "Lưu nháp trên WordPress"}
+KINDS = ("wordpress", "zalo_oa")
+KIND_LABELS = {"wordpress": "WordPress", "zalo_oa": "Zalo OA"}
+MODE_LABELS_BY_KIND = {
+    "wordpress": MODE_LABELS,
+    "zalo_oa": {"publish": "Hiện ngay trên Zalo OA", "draft": "Tạo bài ẩn trên Zalo OA"},
+}
+ZALO_LIMITS = {"title": 150, "excerpt": 300}
 
 # Colours of the events in the Open WebUI calendar, one per state.
 STATE_COLORS = {
@@ -212,6 +223,14 @@ RULES = [
         "title": "Giờ theo múi giờ bạn chọn",
         "text": "Giờ hiển thị và giờ bạn nhập theo múi giờ trong Cài đặt (hoặc múi giờ đang xem). Bên dưới "
         "máy chủ lưu theo UTC nên đổi múi giờ không làm lệch giờ đăng.",
+    },
+    {
+        "key": "zalo",
+        "title": "Zalo OA",
+        "text": "Tới giờ máy chủ tạo bài trên Zalo OA: Hiện ngay, hoặc Tạo bài ẩn để chủ OA tự bật hiển thị. Lịch đăng "
+        "không gửi bài cho người quan tâm (broadcast): chủ OA tự gửi trên oa.zalo.me. Bài Zalo chỉ có chữ và ảnh, "
+        "không chữ đậm, không link bấm được; cần ảnh bìa, tiêu đề tối đa 150 ký tự, mô tả tối đa 300 ký tự; ảnh lớn "
+        "hơn 1 MB được thu nhỏ. OA lấy từ kết nối Zalo của trang Chatbot.",
     },
     {
         "key": "password",

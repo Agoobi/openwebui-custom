@@ -79,7 +79,7 @@ def test_schedule_without_a_site_is_refused():
     with db.tx() as conn:
         conn.execute("DELETE FROM sites")
     post = make()
-    with pytest.raises(Refused, match="Kết nối WordPress"):
+    with pytest.raises(Refused, match="Chưa có nơi đăng nào"):
         service.schedule(ME, post["id"], "2026-11-05 09:00", None, None)
 
 

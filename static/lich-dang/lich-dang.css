@@ -130,7 +130,8 @@ kbd {
 .field { display: flex; flex-direction: column; gap: 6px; }
 .field > span { font-weight: 500; }
 .hint { color: var(--fg-muted); font-size: 12.5px; margin: 0; }
-.hint.warn { color: var(--failed); }
+.hint.warn, small.warn { color: var(--failed); }
+.field > span small { font-weight: 400; }
 .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
 /* Brand mark (same tokens as the website: 16/24/36 px, round) */
