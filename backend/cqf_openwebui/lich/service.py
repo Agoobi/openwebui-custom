@@ -602,7 +602,7 @@ def schedule(actor: Actor, post_id: str, when, tz_name: str | None, mode: str | 
     with db.tx() as conn:
         changed = conn.execute(
             "UPDATE posts SET state='scheduled', publish_at=?, mode=?, site_id=?, attempts=0, next_try_at=NULL, "
-            "error=NULL, zalo_token=CASE WHEN state='failed' THEN NULL ELSE zalo_token END, updated_at=? "
+            "error=NULL, updated_at=? "
             "WHERE id=? AND NOT (state='sending' AND next_try_at IS NULL) AND state<>'sent'",
             (moment, new_mode, site_id, timeutil.now(), post_id),
         ).rowcount
@@ -842,7 +842,14 @@ def _send_zalo(row, site) -> None:
             # Kept at once: if Zalo is slow, the next try asks about this token instead of making a second article.
             with db.tx() as conn:
                 conn.execute("UPDATE posts SET zalo_token=? WHERE id=?", (token, row["id"]))
-        article_id = client.verify(token)
+        try:
+            article_id = client.verify(token)
+        except WpError as error:
+            if getattr(error, "processing_failed", False):
+                # That article will never exist: the next try (after a fix) makes a new one.
+                with db.tx() as conn:
+                    conn.execute("UPDATE posts SET zalo_token=NULL WHERE id=?", (row["id"],))
+            raise
         if not article_id:
             raise WpError("Zalo đang xử lý bài, máy chủ sẽ hỏi lại sau ít phút (không tạo bài mới).")
         with db.tx() as conn:

@@ -26,6 +26,8 @@ API = "https://openapi.zalo.me/v2.0"
 LIMITS = {"title": 150, "author": 50, "description": 300}
 MAX_IMAGE = 1024 * 1024
 TOKEN_ERRORS = {-216, -124}
+PROCESSING = -214  # "Media is being processed. Please wait for a moment": verify again later
+TRANSIENT_ERRORS = {-224, -32, -200, PROCESSING}
 PERMANENT_ERRORS = {
     -230: "OA chưa cấp quyền quản lý bài viết cho app Zalo: chủ OA kết nối lại và bật quyền bài viết.",
     -201: "Zalo từ chối bài (tiêu đề, mô tả quá dài, hoặc không tải được ảnh bìa).",
@@ -99,7 +101,9 @@ class Client:
                 message = PERMANENT_ERRORS.get(code)
                 if message:
                     raise WpError(f"{message} (Zalo {code})", permanent=True)
-                raise WpError(f"Zalo trả lỗi {code}: {res.get('message', '')}", permanent=code not in (-224, -32, -200))
+                error = WpError(f"Zalo trả lỗi {code}: {res.get('message', '')}", permanent=code not in TRANSIENT_ERRORS)
+                error.code = code
+                raise error
             return res.get("data") or {}
         raise WpError("Zalo từ chối token OA.", permanent=True)
 
@@ -119,10 +123,15 @@ class Client:
             try:
                 data = self.call("POST", "/article/verify", body={"token": token})
             except WpError as error:
-                if "failed" in error.message.lower() or "-200" in error.message:
-                    raise WpError("Zalo xử lý bài thất bại, thường do ảnh quá 1 MB hoặc Zalo không tải được ảnh: "
-                                  + error.message, permanent=True) from error
-                raise
+                if getattr(error, "code", None) == PROCESSING:
+                    data = {}  # Zalo is still fetching the images
+                elif "failed" in error.message.lower() or getattr(error, "code", None) == -200:
+                    failed = WpError("Zalo xử lý bài thất bại, thường do ảnh quá 1 MB hoặc Zalo không tải được ảnh: "
+                                     + error.message, permanent=True)
+                    failed.processing_failed = True
+                    raise failed from error
+                else:
+                    raise
             if data.get("id"):
                 return str(data["id"])
             if attempt < tries - 1:

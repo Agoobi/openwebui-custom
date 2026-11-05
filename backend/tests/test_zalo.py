@@ -148,6 +148,59 @@ def test_slow_zalo_is_asked_again_without_a_second_article(zalo):
     assert service.get_post("u1", post["id"])["state"] == "sent" and len(fake.created) == 1
 
 
+def test_processing_answer_is_waited_for_and_retry_reuses_the_token(zalo, monkeypatch):
+    fake, clock, site = zalo
+    still = WpError("Zalo trả lỗi -214: Media is being processed")
+    still.code = zalo_oa.PROCESSING
+    calls = {"n": 0}
+    real_verify = fake.verify
+
+    def slow_verify(token):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise WpError("Không gọi được Zalo (/article/verify): timeout")  # a network hiccup after create
+        return real_verify(token)
+
+    monkeypatch.setattr(fake, "verify", slow_verify)
+    post = zalo_post(site)
+    service.schedule(ME, post["id"], "2026-11-04 10:05", None, None)
+    clock["now"] += 300
+    worker.dispatch_due()
+    clock["now"] += 60
+    worker.dispatch_due()
+    assert service.get_post("u1", post["id"])["state"] == "sent" and len(fake.created) == 1
+
+
+def test_minus_214_means_still_processing():
+    answers = [{"error": -214, "message": "Media is being processed"}, {"error": 0, "data": {"id": "abc"}}]
+
+    class Resp:
+        def __init__(self, body):
+            self.body = body
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return None
+
+        def read(self):
+            import json as _json
+            return _json.dumps(self.body).encode()
+
+    client = zalo_oa.Client("999", token_fn=lambda force: "t", opener=lambda req, timeout: Resp(answers.pop(0)))
+    assert client.verify("tok", tries=3, wait=0) == "abc"
+
+
+def test_failed_post_keeps_the_zalo_token_when_rescheduled(zalo):
+    fake, clock, site = zalo
+    post = zalo_post(site)
+    with db.tx() as conn:
+        conn.execute("UPDATE posts SET state='failed', zalo_token='tok7', error='x' WHERE id=?", (post["id"],))
+    service.schedule(ME, post["id"], "2026-11-04 10:05", None, None)
+    assert db.one("SELECT zalo_token FROM posts WHERE id=?", (post["id"],))[0] == "tok7"
+
+
 def test_broken_token_fails_at_once(zalo):
     fake, clock, site = zalo
     fake.fail = WpError("Token Zalo OA không dùng được (Zalo -216)", permanent=True)
