@@ -199,6 +199,13 @@
   function wpMark(size) {
     return '<span class="mark ' + (size || "xs") + '"><img src="/static/lich-dang/wordpress.svg" alt="WordPress"></span>';
   }
+  function isZalo(x) { return !!x && (x.kind === "zalo_oa" || x.channel === "zalo_oa"); }
+  function markFor(site, size) {
+    if (!isZalo(site)) return wpMark(size);
+    return '<span class="mark ' + (size || "xs") + '"><img src="/static/lich-dang/zalo.svg" alt="Zalo"></span>';
+  }
+  function siteLabel(s) { return isZalo(s) ? s.name : host(s.url); }
+  function modeLabels(kind) { return (S.me.modes_by_kind || {})[kind || "wordpress"] || S.me.modes; }
   function host(url) { return String(url || "").replace(/^https?:\/\//, "").replace(/\/.*$/, ""); }
 
   function stateBadge(p) {
@@ -238,14 +245,14 @@
         '<button class="btn primary" data-act="new">' + icon("plus") + 'Viết bài <kbd>N</kbd></button>' +
       "</header>" +
       '<main class="main">' +
-        '<div class="lede"><p>Bài viết blog theo ngày. Bấm ô trống để hẹn bài, kéo bài đã hẹn để đổi giờ. Bài được giữ ở đây và đúng giờ mới gửi lên WordPress.</p></div>' +
+        '<div class="lede"><p>Bài WordPress và Zalo OA theo ngày. Bấm ô trống để hẹn bài, kéo bài đã hẹn để đổi giờ. Bài được giữ ở đây, đúng giờ mới gửi đi.</p></div>' +
         (broken.length ? '<div class="banner slim">' + icon("shield-alert") + "<p><strong>" +
-          (broken.length === 1 ? esc(host(broken[0].url)) + " chưa kết nối được" : broken.length + " site chưa kết nối được") +
+          (broken.length === 1 ? esc(siteLabel(broken[0])) + " chưa kết nối được" : broken.length + " nơi đăng chưa kết nối được") +
           '</strong> <span class="why" title="' + esc(broken.map(function (s) { return s.name + ": " + (s.check_error || ""); }).join("\n")) + '">' +
-          esc(broken.length === 1 ? broken[0].check_error || "" : broken.map(function (s) { return host(s.url); }).join(", ")) + "</span></p>" +
+          esc(broken.length === 1 ? broken[0].check_error || "" : broken.map(siteLabel).join(", ")) + "</span></p>" +
           '<button class="btn sm" data-act="settings" data-tab="sites">Xem và kiểm tra lại</button></div>' : "") +
-        (S.sites.length ? "" : '<div class="banner">' + icon("plug") + "<p><strong>Chưa có site WordPress nào.</strong> Thêm site và application password để bài đi được.</p>" +
-          '<button class="btn sm" data-act="settings" data-tab="sites">Kết nối WordPress</button></div>') +
+        (S.sites.length ? "" : '<div class="banner">' + icon("plug") + "<p><strong>Chưa có nơi đăng nào.</strong> Thêm site WordPress (application password) hoặc Zalo OA để bài đi được.</p>" +
+          '<button class="btn sm" data-act="settings" data-tab="sites">Kết nối</button></div>') +
         '<div class="toolbar">' +
           '<button class="btn" data-act="today">Hôm nay</button>' +
           '<button class="btn icon ghost" data-act="prev" title="Trước">' + icon("chevron-left") + "</button>" +
@@ -266,7 +273,7 @@
           '<div class="spacer"></div>' +
           (S.sites.length > 1 ? '<button class="chip ' + (S.siteFilter === "all" ? "on" : "") + '" data-act="site" data-id="all">Tất cả site</button>' +
             S.sites.map(function (s) {
-              return '<button class="chip ' + (S.siteFilter === s.id ? "on" : "") + '" data-act="site" data-id="' + s.id + '" title="' + esc(s.name) + '">' + wpMark() + esc(host(s.url)) +
+              return '<button class="chip ' + (S.siteFilter === s.id ? "on" : "") + '" data-act="site" data-id="' + s.id + '" title="' + esc(s.name) + '">' + markFor(s) + esc(siteLabel(s)) +
                 ' <span class="count">' + (counts[s.id] || 0) + "</span></button>";
             }).join("") : "") +
           '<div class="seg">' +
@@ -515,10 +522,19 @@
     }).catch(function (e) { toast(e.message, true); closeLayer(); });
   }
 
+  function zaloIssues(p) {
+    var out = [];
+    if (p.title.length > 150) out.push("tiêu đề " + p.title.length + "/150 ký tự");
+    if ((p.excerpt || "").length > 300) out.push("mô tả ngắn " + p.excerpt.length + "/300 ký tự");
+    if (!p.has_cover) out.push("chưa có ảnh bìa");
+    return out;
+  }
+
   function renderPost(p) {
     var tz = S.tz;
     var at = ms(p.publish_at);
     var site = siteOf(p.site_id);
+    var zalo = isZalo(p);
     var editable = p.state === "unscheduled" || p.state === "scheduled" || p.state === "failed" || (p.state === "sending" && p.next_try_at);
     var earliest = Date.now() + (S.me.min_lead_seconds || 120) * 1000;
     var note = "";
@@ -541,13 +557,13 @@
 
     var html =
       '<div class="sheet-head"><div style="flex:1;min-width:0"><h2>' + esc(p.title) + '</h2><div class="row">' + stateBadge(p) +
-        (site ? '<span class="badge neutral">' + wpMark() + esc(site.name) + "</span>" : '<span class="badge state-failed">Chưa chọn site</span>') +
+        (site ? '<span class="badge neutral">' + markFor(site) + esc(site.name) + "</span>" : '<span class="badge state-failed">Chưa chọn nơi đăng</span>') +
         '<span class="badge neutral">' + icon(p.mode === "publish" ? "globe" : "file-pen") + esc(p.mode_label) + "</span></div></div>" +
         '<button class="btn icon ghost" data-act="close" title="Đóng">' + icon("x") + "</button></div>" +
       '<div class="sheet-body">' +
         '<div class="sec">' +
           (p.has_cover ? '<img class="cover" data-cover="' + p.id + '" alt="' + esc(p.cover_alt) + '">' : '<div class="cover-empty">' + icon("image") + " Chưa có ảnh bìa</div>") +
-          '<div class="row"><button class="btn" data-act="preview">' + icon("eye") + "Xem trước như trên web</button>" +
+          '<div class="row"><button class="btn" data-act="preview">' + icon("eye") + (zalo ? "Xem trước như trên Zalo" : "Xem trước như trên web") + "</button>" +
           (editable ? '<label class="btn">' + icon("image-up") + (p.has_cover ? "Đổi ảnh bìa" : "Thêm ảnh bìa") +
             '<input type="file" accept="image/jpeg,image/png,image/gif,image/webp" data-act="cover-file" hidden></label>' +
             (p.has_cover ? '<button class="btn ghost" data-act="cover-remove">Bỏ ảnh</button>' : "") +
@@ -556,16 +572,19 @@
         "</div>" +
         '<dl class="facts">' +
           "<dt>Thời điểm</dt><dd>" + (at ? esc(longTime(at, tz)) + "<small>" + esc(rel(at)) + " · " + esc(tz) + " " + gmt(tz, at) + "</small>" : "Chưa có") + "</dd>" +
-          "<dt>Site</dt><dd>" + (site ? esc(site.name) + "<small>" + esc(site.url) + "</small>" : "Chưa có") + "</dd>" +
+          "<dt>Nơi đăng</dt><dd>" + (site ? esc(site.name) + "<small>" + esc(zalo ? "Zalo OA · " + (site.options.author || site.name) : site.url) + "</small>" : "Chưa có") + "</dd>" +
           "<dt>Chế độ</dt><dd>" + esc(p.mode_label) + "</dd>" +
           (p.wp_post_id ? "<dt>WordPress</dt><dd>Bài #" + p.wp_post_id + " · " + esc(p.wp_status === "publish" ? "đã đăng" : "nháp") + "</dd>" : "") +
+          (zalo && p.ext_id ? "<dt>Zalo OA</dt><dd>Bài " + esc(p.ext_id) + " · " + esc(p.wp_status === "publish" ? "đang hiện" : "đang ẩn") + "</dd>" : "") +
           "<dt>Nguồn</dt><dd>" + (p.source === "agent" ? "Agent viết" : "Viết trên trang này") + "</dd>" +
           "<dt>Độ dài</dt><dd>" + p.words + " chữ</dd>" +
-          (p.categories.length ? "<dt>Chuyên mục</dt><dd>" + esc(p.categories.join(", ")) + "</dd>" : "") +
-          (p.tags.length ? "<dt>Thẻ</dt><dd>" + esc(p.tags.join(", ")) + "</dd>" : "") +
-          "<dt>Đường dẫn</dt><dd>/" + esc(p.slug) + "/</dd>" +
+          (!zalo && p.categories.length ? "<dt>Chuyên mục</dt><dd>" + esc(p.categories.join(", ")) + "</dd>" : "") +
+          (!zalo && p.tags.length ? "<dt>Thẻ</dt><dd>" + esc(p.tags.join(", ")) + "</dd>" : "") +
+          (zalo ? "<dt>Mô tả ngắn</dt><dd>" + esc(p.excerpt || "Chưa có") + "<small>" + (p.excerpt || "").length + "/300 ký tự</small></dd>"
+            : "<dt>Đường dẫn</dt><dd>/" + esc(p.slug) + "/</dd>") +
         "</dl>" +
         '<div class="sec"><p class="hint" style="font-size:13.5px">' + note + "</p>" +
+          (zalo && zaloIssues(p).length && editable ? '<p class="error-text">' + icon("triangle-alert") + " Zalo chưa nhận bài này: " + esc(zaloIssues(p).join("; ")) + ".</p>" : "") +
           (p.error ? '<p class="error-text">' + icon("triangle-alert") + " " + esc(p.error) + "</p>" : "") +
         "</div>" +
         (editable ?
@@ -577,11 +596,11 @@
             '<div class="slot-pick" id="slotpick"><span class="hint">Đang tìm khung giờ trống…</span></div>' +
           "</div>" +
           '<div class="sec"><h3>Chế độ đăng</h3><div class="seg">' +
-            '<button class="' + (p.mode === "publish" ? "on" : "") + '" data-act="mode" data-mode="publish">' + icon("globe") + "Đăng thật</button>" +
-            '<button class="' + (p.mode === "draft" ? "on" : "") + '" data-act="mode" data-mode="draft">' + icon("file-pen") + "Lưu nháp trên WordPress</button></div>" +
-            '<p class="hint">' + esc(ruleText("mode")) + "</p>" +
-            (S.sites.length > 1 && !p.wp_post_id ? '<label class="field"><span>Site</span><select class="select" data-act="post-site">' +
-              S.sites.map(function (s) { return '<option value="' + s.id + '"' + (s.id === p.site_id ? " selected" : "") + ">" + esc(s.name) + "</option>"; }).join("") +
+            '<button class="' + (p.mode === "publish" ? "on" : "") + '" data-act="mode" data-mode="publish">' + icon("globe") + esc(modeLabels(p.channel).publish) + "</button>" +
+            '<button class="' + (p.mode === "draft" ? "on" : "") + '" data-act="mode" data-mode="draft">' + icon("file-pen") + esc(modeLabels(p.channel).draft) + "</button></div>" +
+            '<p class="hint">' + esc(ruleText(zalo ? "zalo" : "mode")) + "</p>" +
+            (S.sites.length > 1 && !p.wp_post_id && !p.ext_id ? '<label class="field"><span>Nơi đăng</span><select class="select" data-act="post-site">' +
+              S.sites.map(function (s) { return '<option value="' + s.id + '"' + (s.id === p.site_id ? " selected" : "") + ">" + esc(s.kind_label + " · " + s.name) + "</option>"; }).join("") +
               "</select></label>" : "") +
           "</div>" : "") +
         '<div class="sec"><h3>Lịch sử</h3><ul class="history">' + (p.history || []).map(function (h) {
@@ -592,8 +611,8 @@
         (p.state === "failed" ? '<button class="btn primary" data-act="retry">' + icon("rotate-cw") + "Thử lại (2 phút nữa)</button>" : "") +
         ((p.state === "scheduled" || p.state === "failed" || (p.state === "sending" && p.next_try_at)) ? '<button class="btn" data-act="unschedule">' + icon("calendar-x") + "Huỷ lịch</button>" : "") +
         ((p.state === "unscheduled" || p.state === "failed" || p.state === "sent") ? '<button class="btn ghost danger" data-act="archive">' + icon("archive") + "Bỏ khỏi danh sách</button>" : "") +
-        (p.wp_url ? '<a class="btn" target="_blank" rel="noopener" href="' + esc(p.wp_url) + '">' + icon("external-link") + "Xem bài trên site</a>" : "") +
-        (p.wp_edit_url ? '<a class="btn" target="_blank" rel="noopener" href="' + esc(p.wp_edit_url) + '">' + wpMark() + "Mở trong WordPress</a>" : "") +
+        (p.wp_url ? '<a class="btn" target="_blank" rel="noopener" href="' + esc(p.wp_url) + '">' + icon("external-link") + (zalo ? "Xem bài trên Zalo" : "Xem bài trên site") + "</a>" : "") +
+        (p.wp_edit_url ? '<a class="btn" target="_blank" rel="noopener" href="' + esc(p.wp_edit_url) + '">' + markFor(site) + (zalo ? "Quản lý bài trên Zalo OA" : "Mở trong WordPress") + "</a>" : "") +
       "</div>";
     sheet(html);
     fillCovers($("#layer"));
@@ -638,6 +657,30 @@
     });
   }
 
+  function zaloDoc(p, blocks, coverData) {
+    var site = siteOf(p.site_id);
+    var author = site && site.options && site.options.author ? site.options.author : (site ? site.name : "");
+    return "<!doctype html><html lang='vi'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>" +
+      "<style>body{margin:0;background:#e9ebed;font:16px/1.6 -apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:#081c36}" +
+      ".phone{max-width:420px;margin:16px auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 6px 24px rgba(0,0,0,.12)}" +
+      ".bar{display:flex;align-items:center;gap:8px;padding:10px 14px;background:#0068ff;color:#fff;font-size:14px;font-weight:600}" +
+      ".cover{width:100%;aspect-ratio:16/9;object-fit:cover;display:block;background:#dfe2e7}" +
+      ".in{padding:14px 16px 28px}h1{font-size:20px;line-height:1.35;margin:0 0 6px}.meta{color:#7589a3;font-size:13px;margin-bottom:12px}" +
+      ".desc{color:#5a6981;font-size:15px;margin:0 0 14px}p{margin:0 0 12px;white-space:pre-wrap}img.b{width:100%;border-radius:6px;display:block}" +
+      "figure{margin:0 0 12px}figcaption{color:#7589a3;font-size:13px;text-align:center;margin-top:4px}" +
+      ".note{max-width:420px;margin:0 auto 16px;color:#5a6981;font:12.5px system-ui,sans-serif;padding:0 8px}</style></head><body>" +
+      "<div class='phone'><div class='bar'>Zalo OA · " + esc(site ? site.name : "") + "</div>" +
+      (coverData ? "<img class='cover' src='" + coverData + "' alt=''>" : "<div class='cover'></div>") +
+      "<div class='in'><h1>" + esc(p.title) + "</h1><div class='meta'>" + esc(author) + "</div>" +
+      (p.excerpt ? "<p class='desc'>" + esc(p.excerpt) + "</p>" : "") +
+      blocks.map(function (b) {
+        if (b.type === "image") return "<figure><img class='b' src='" + esc(b.url) + "' alt=''>" + (b.caption ? "<figcaption>" + esc(b.caption) + "</figcaption>" : "") + "</figure>";
+        var t = document.createElement("textarea"); t.innerHTML = b.content;  // Zalo shows the decoded text
+        return "<p>" + esc(t.value) + "</p>";
+      }).join("") +
+      "</div></div><p class='note'>Bài Zalo chỉ có chữ thường và ảnh: chữ đậm, nghiêng, link bấm được sẽ thành chữ thường.</p></body></html>";
+  }
+
   function openPreview(p) {
     var go = function (data) {
       var layer = $("#layer");
@@ -646,7 +689,14 @@
         '<span class="hint">Giao diện gần giống bài trên site; theme thật có thể khác chút.</span>' +
         '<button class="btn icon ghost" data-act="close-modal">' + icon("x") + '</button></div><iframe sandbox="" title="Xem trước"></iframe></div>';
       var frame = holder.querySelector("iframe");
-      inlineMedia(p.html).then(function (body) { frame.srcdoc = previewDoc(Object.assign({}, p, { html: body }), data); });
+      if (isZalo(p)) {
+        holder.querySelector(".modal-head .hint").textContent = "Gần giống bài trên ứng dụng Zalo.";
+        api("/posts/" + p.id + "/zalo").then(function (z) {
+          return inlineMedia(JSON.stringify(z.blocks)).then(function (json) { frame.srcdoc = zaloDoc(p, JSON.parse(json), data); });
+        }).catch(function (e) { toast(e.message, true); });
+      } else {
+        inlineMedia(p.html).then(function (body) { frame.srcdoc = previewDoc(Object.assign({}, p, { html: body }), data); });
+      }
       holder.id = "modal";
       layer.appendChild(holder);
       icons();
@@ -662,18 +712,23 @@
   // ---------- editor ----------
   function openEditor(p, atMs) {
     var isNew = !p;
-    p = p || { title: "", excerpt: "", slug: "", categories: [], tags: [], html: "", cover_alt: "" };
+    p = p || { title: "", excerpt: "", slug: "", categories: [], tags: [], html: "", cover_alt: "", site_id: S.settings.default_site_id };
+    var locked = !isNew && (p.wp_post_id || p.ext_id);
     S.sheet = { kind: "editor", post: isNew ? null : p, at: atMs || null };
     sheet(
       '<div class="sheet-head"><h2>' + (isNew ? "Viết bài" : "Sửa nội dung") + '</h2><button class="btn icon ghost" data-act="close">' + icon("x") + "</button></div>" +
       '<form class="sheet-body" id="editor" autocomplete="off">' +
         '<div class="sec">' +
-          '<label class="field"><span>Tiêu đề</span><input class="input" name="title" required maxlength="300" value="' + esc(p.title) + '"></label>' +
-          '<label class="field"><span>Mô tả ngắn</span><textarea class="textarea" name="excerpt" rows="2" maxlength="1000">' + esc(p.excerpt) + "</textarea></label>" +
+          (S.sites.length ? '<label class="field"><span>Đăng lên</span><select class="select" name="site_id"' + (locked ? " disabled" : "") + ">" +
+            S.sites.map(function (s) { return '<option value="' + s.id + '"' + (s.id === p.site_id ? " selected" : "") + ">" + esc(s.kind_label + " · " + s.name) + "</option>"; }).join("") +
+            "</select></label>" : "") +
+          '<label class="field"><span>Tiêu đề <small class="hint" id="title-count"></small></span><input class="input" name="title" required maxlength="300" value="' + esc(p.title) + '"></label>' +
+          '<label class="field"><span>Mô tả ngắn <small class="hint" id="excerpt-count"></small></span><textarea class="textarea" name="excerpt" rows="2" maxlength="1000">' + esc(p.excerpt) + "</textarea></label>" +
+          '<p class="hint zalo-only">Zalo OA: bài chỉ hiện chữ thường và ảnh (không chữ đậm, không link bấm được); bắt buộc ảnh bìa.</p>' +
           '<label class="field"><span>Nội dung (HTML)</span><textarea class="textarea code" name="html" spellcheck="false">' + esc(p.html) + "</textarea>" +
             '<p class="hint">Dùng thẻ &lt;h2&gt;, &lt;p&gt;, &lt;ul&gt;, &lt;table&gt;… Không lặp lại tiêu đề trong nội dung.</p></label>' +
         "</div>" +
-        '<div class="sec">' +
+        '<div class="sec wp-only">' +
           '<label class="field"><span>Chuyên mục</span><input class="input" name="categories" placeholder="Cách nhau bằng dấu phẩy" value="' + esc(p.categories.join(", ")) + '"></label>' +
           '<div class="slot-pick" id="catpick"><span class="hint">Đang lấy chuyên mục của site…</span></div>' +
           '<label class="field"><span>Thẻ</span><input class="input" name="tags" placeholder="Cách nhau bằng dấu phẩy" value="' + esc(p.tags.join(", ")) + '"></label>' +
@@ -689,6 +744,7 @@
       true
     );
     $("#editor input[name=title]").focus();
+    editorChannel();
     var siteId = p.site_id || (S.settings && S.settings.default_site_id);
     var box = $("#catpick");
     if (!siteId) { box.innerHTML = '<span class="hint">Chưa có site WordPress.</span>'; return; }
@@ -702,6 +758,22 @@
     });
   }
 
+  function editorChannel() {
+    var f = $("#editor");
+    if (!f) return;
+    var site = f.site_id ? siteOf(f.site_id.value) : siteOf(S.settings.default_site_id);
+    var zalo = isZalo(site);
+    $$(".wp-only", f).forEach(function (x) { x.hidden = zalo; });
+    $$(".zalo-only", f).forEach(function (x) { x.hidden = !zalo; });
+    var count = function (input, id, max) {
+      var n = input.value.length;
+      $(id).textContent = zalo ? "(" + n + "/" + max + ")" : "";
+      $(id).classList.toggle("warn", zalo && n > max);
+    };
+    count(f.title, "#title-count", 150);
+    count(f.excerpt, "#excerpt-count", 300);
+  }
+
   function saveEditor() {
     var f = $("#editor");
     if (!f.reportValidity()) return;
@@ -709,6 +781,7 @@
       title: f.title.value, excerpt: f.excerpt.value, html: f.html.value, slug: f.slug.value,
       categories: f.categories.value, tags: f.tags.value, cover_alt: f.cover_alt.value
     };
+    if (f.site_id && !f.site_id.disabled) data.site_id = f.site_id.value;
     var ctx = S.sheet;
     var file = f.cover && f.cover.files[0];
     var req = ctx.post ? api("/posts/" + ctx.post.id, { method: "PATCH", body: data }) : api("/posts", { method: "POST", body: data });
@@ -731,14 +804,14 @@
     if (!(S.sheet && S.sheet.kind === "settings")) S.sheet = { kind: "settings" };
     S.sheet.tab = tab;
     var st = S.settings;
-    var tabs = '<div class="tabs">' + [["sites", "Kết nối WordPress"], ["publish", "Đăng bài"], ["slots", "Khung giờ đăng"], ["status", "Trạng thái"]].map(function (t) {
+    var tabs = '<div class="tabs">' + [["sites", "Kết nối"], ["publish", "Đăng bài"], ["slots", "Khung giờ đăng"], ["status", "Trạng thái"]].map(function (t) {
       return '<button class="' + (t[0] === tab ? "on" : "") + '" data-act="settings" data-tab="' + t[0] + '">' + t[1] + "</button>";
     }).join("") + "</div>";
     var body = "";
     if (tab === "sites") {
       body = '<div class="sec"><p class="hint">' + esc(ruleText("password")) + "</p>" +
         (S.me.server_ip ? '<p class="hint">Hosting có tường lửa thì cho IP máy chủ <b>' + esc(S.me.server_ip) + "</b> vào danh sách cho phép.</p>" : "") + "</div>" +
-        '<div class="sec" style="padding-top:0">' + (S.sites.length ? S.sites.map(function (s) {
+        '<div class="sec" style="padding-top:0"><h3>WordPress</h3>' + (S.sites.filter(function (s) { return !isZalo(s); }).length ? S.sites.filter(function (s) { return !isZalo(s); }).map(function (s) {
           return '<div class="site">' + wpMark("md") + '<div class="who"><b>' + esc(s.name) + (s.id === st.default_site_id ? ' <span class="badge neutral">Mặc định</span>' : "") + "</b>" +
             "<small>" + esc(s.url) + " · " + esc(s.username) + "</small>" +
             (s.check_ok ? '<small style="color:var(--sent)">' + icon("circle-check") + " Kết nối được" + (s.unfiltered_html === false ? " · tài khoản không được dùng HTML thô, thẻ &lt;style&gt;/&lt;script&gt; sẽ bị lọc" : "") + "</small>"
@@ -747,8 +820,19 @@
             '<div class="row"><button class="btn sm" data-act="check-site" data-id="' + s.id + '">Kiểm tra</button>' +
             '<button class="btn sm" data-act="edit-site" data-id="' + s.id + '">Sửa</button>' +
             '<button class="btn sm ghost danger" data-act="delete-site" data-id="' + s.id + '">Xoá</button></div></div>';
-        }).join("") : '<p class="empty">Chưa có site nào.</p>') + "</div>" +
-        siteForm(S.sheet.editSite ? siteOf(S.sheet.editSite) : null);
+        }).join("") : '<p class="hint">Chưa có site WordPress nào.</p>') + "</div>" +
+        siteForm(S.sheet.editSite ? siteOf(S.sheet.editSite) : null) +
+        '<div class="sec"><h3>Zalo OA</h3><p class="hint">' + esc(ruleText("zalo")) + "</p>" +
+        S.sites.filter(isZalo).map(function (s) {
+          return '<div class="site">' + markFor(s, "md") + '<div class="who"><b>' + esc(s.name) + (s.id === st.default_site_id ? ' <span class="badge neutral">Mặc định</span>' : "") + "</b>" +
+            "<small>OA " + esc(s.oa_id) + "</small>" +
+            (s.check_ok ? '<small style="color:var(--sent)">' + icon("circle-check") + " Kết nối được</small>" : '<small class="error-text">' + icon("circle-x") + " " + esc(s.check_error || "Chưa kiểm tra") + "</small>") +
+            '<div class="row" style="margin-top:8px"><input class="input" style="max-width:220px" data-zalo-author="' + s.id + '" maxlength="50" value="' + esc(s.options.author || "") + '" placeholder="Tác giả">' +
+            '<select class="select" style="max-width:170px" data-zalo-comment="' + s.id + '"><option value="show"' + (s.options.comment !== "hide" ? " selected" : "") + '>Cho bình luận</option><option value="hide"' + (s.options.comment === "hide" ? " selected" : "") + ">Tắt bình luận</option></select>" +
+            '<button class="btn sm" data-act="save-zalo" data-id="' + s.id + '">Lưu</button></div></div>' +
+            '<div class="row"><button class="btn sm" data-act="check-site" data-id="' + s.id + '">Kiểm tra</button>' +
+            '<button class="btn sm ghost danger" data-act="delete-site" data-id="' + s.id + '">Xoá</button></div></div>';
+        }).join("") + '<div id="zalo-cands"><span class="hint">Đang tìm OA đã kết nối trên máy chủ…</span></div></div>';
     } else if (tab === "publish") {
       body = '<form id="pubform" class="sheet-body" style="padding:0">' +
         '<div class="sec"><label class="field"><span>Múi giờ</span><select class="select" name="timezone">' + zoneOptions(st.timezone) + "</select></label>" +
@@ -783,6 +867,17 @@
           (S.me.agent && !S.me.agent.works_for_me ? '<button class="btn sm" style="margin-top:6px" data-act="claim-agent">Agent làm việc cho tôi</button>' : "") + "</dd>" +
         "<dt>Bạn</dt><dd>" + esc(S.me.user.name) + "</dd></dl>" +
         (w.last_error ? '<p class="error-text">' + esc(w.last_error) + "</p>" : "");
+    }
+    if (tab === "sites") {
+      api("/zalo/oas").then(function (oas) {
+        var box = $("#zalo-cands");
+        if (!box) return;
+        var left = oas.filter(function (o) { return !o.added; });
+        box.innerHTML = left.length ? left.map(function (o) {
+          return '<div class="site">' + markFor({ kind: "zalo_oa" }, "md") + '<div class="who"><b>' + esc(o.name) + "</b><small>OA " + esc(o.oa_id) + " · đã kết nối ở trang Chatbot</small></div>" +
+            '<button class="btn sm primary" data-act="add-zalo" data-oa="' + esc(o.oa_id) + '">' + icon("plus") + "Thêm vào Lịch đăng</button></div>";
+        }).join("") : (oas.length ? "" : '<p class="hint">Chưa có OA nào kết nối trên máy chủ. Nạp token OA ở trang Chatbot → Kênh Zalo OA, rồi quay lại đây.</p>');
+      }).catch(function () { var box = $("#zalo-cands"); if (box) box.innerHTML = ""; });
     }
     var foot = tab === "publish" ? '<div class="sheet-foot"><button class="btn primary" data-act="save-publish">' + icon("check") + "Lưu</button></div>"
       : tab === "slots" ? '<div class="sheet-foot"><button class="btn primary" data-act="save-slots">' + icon("check") + "Lưu khung giờ</button></div>" : "";
@@ -919,6 +1014,19 @@
           .catch(function (x) { toast(x.message, true); });
         break;
       case "save-site": e.preventDefault(); saveSite(el); break;
+      case "add-zalo":
+        el.disabled = true;
+        api("/sites/zalo", { method: "POST", body: { oa_id: el.dataset.oa } }).then(function (s) {
+          toast(s.check_ok ? "Đã thêm Zalo OA " + s.name + "." : "Đã thêm " + s.name + " nhưng chưa kết nối được: " + s.check_error, !s.check_ok);
+          return refresh().then(function () { openSettings("sites"); });
+        }).catch(function (x) { toast(x.message, true); el.disabled = false; });
+        break;
+      case "save-zalo":
+        api("/sites/" + el.dataset.id + "/zalo", { method: "PATCH", body: {
+          author: $('[data-zalo-author="' + el.dataset.id + '"]').value, comment: $('[data-zalo-comment="' + el.dataset.id + '"]').value } })
+          .then(function () { toast("Đã lưu."); return refresh().then(function () { openSettings("sites"); }); })
+          .catch(function (x) { toast(x.message, true); });
+        break;
       case "save-publish":
         var f = $("#pubform");
         var on = $("#defmode .on");
@@ -964,8 +1072,13 @@
 
   document.addEventListener("submit", function (e) { e.preventDefault(); var b = e.target.querySelector("[data-act=save-site]"); if (b) saveSite(b); });
 
+  document.addEventListener("input", function (e) {
+    if (e.target.closest("#editor")) editorChannel();
+  });
+
   document.addEventListener("change", function (e) {
     var el = e.target;
+    if (el.name === "site_id" && el.closest("#editor")) editorChannel();
     if (el.dataset.act === "tz") { S.tz = el.value; store("tz", S.tz); S.anchor = today(); loadPosts().then(render); }
     if (el.dataset.act === "slot-time") { S.sheet.slots[+el.dataset.i].time = el.value; }
     if (el.dataset.act === "post-site") {

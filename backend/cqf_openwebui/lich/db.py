@@ -124,8 +124,13 @@ def tx():
 def _migrate(conn: sqlite3.Connection) -> None:
     """Columns added after the first release."""
     have = {row[1] for row in conn.execute("PRAGMA table_info(posts)")}
-    if "media_map" not in have:
-        conn.execute("ALTER TABLE posts ADD COLUMN media_map TEXT")
+    for column in ("media_map TEXT", "ext_id TEXT", "zalo_token TEXT"):
+        if column.split()[0] not in have:
+            conn.execute(f"ALTER TABLE posts ADD COLUMN {column}")
+    have = {row[1] for row in conn.execute("PRAGMA table_info(sites)")}
+    for column in ("kind TEXT NOT NULL DEFAULT 'wordpress'", "external_id TEXT", "options TEXT"):
+        if column.split()[0] not in have:
+            conn.execute(f"ALTER TABLE sites ADD COLUMN {column}")
 
 
 def query(sql: str, params: tuple = ()) -> list[sqlite3.Row]:

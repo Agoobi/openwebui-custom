@@ -12,6 +12,9 @@ user named there. The agent cannot touch sites or settings (rule "agent").
     GET/PATCH /posts/{id}             POST /posts/{id}/schedule|mode|unschedule|retry|archive
     GET/POST/DELETE /posts/{id}/cover  POST /posts/{id}/media, GET /media/{post}/{name}  (images inside the post)
     GET  /sites/{id}/categories        categories the site has; a post may only use these
+    GET  /zalo/oas, POST /sites/zalo, PATCH /sites/{id}/zalo   Zalo OA channels (tokens from the chatbot's store)
+    GET  /posts/{id}/zalo              the post as Zalo blocks (preview)
+    GET  /public/{post}/{name}?e&s     signed, expiring image links for Zalo (no sign-in)
     GET  /slots/next?count
     GET/POST /agent                   who the agent works for; POST makes it work for the caller (admin)
 """
@@ -20,7 +23,7 @@ import hmac
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 
 from . import config, service, timeutil, worker
@@ -87,6 +90,8 @@ def me(actor: Actor = Depends(current_actor)):
         "rules": config.RULES,
         "states": config.STATE_LABELS,
         "modes": config.MODE_LABELS,
+        "modes_by_kind": config.MODE_LABELS_BY_KIND,
+        "kinds": config.KIND_LABELS,
         "min_lead_seconds": config.MIN_LEAD_SECONDS,
         "server_ip": config.SERVER_PUBLIC_IP,
         "agent": None if actor.is_agent else _agent_public(actor),
@@ -151,6 +156,44 @@ def patch_site(site_id: str, body: SiteIn, actor: Actor = Depends(current_actor)
 @router.post("/sites/{site_id}/check")
 def check_site(site_id: str, actor: Actor = Depends(current_actor)):
     return service.check_site(actor, site_id)
+
+
+@router.get("/zalo/oas")
+def zalo_oas(actor: Actor = Depends(current_actor)):
+    """Zalo OAs connected on this server (Chatbot > Kênh Zalo OA) that can be added to Lịch đăng."""
+    return service.zalo_candidates(actor)
+
+
+class ZaloIn(BaseModel):
+    oa_id: str | None = None
+    author: str | None = None
+    comment: str | None = None
+
+
+@router.post("/sites/zalo")
+def add_zalo(body: ZaloIn, actor: Actor = Depends(current_actor)):
+    return service.add_zalo_site(actor, body.oa_id or "", body.author, body.comment)
+
+
+@router.patch("/sites/{site_id}/zalo")
+def patch_zalo(site_id: str, body: ZaloIn, actor: Actor = Depends(current_actor)):
+    return service.update_zalo_site(actor, site_id, body.author, body.comment)
+
+
+@router.get("/public/{post_id}/{name}")
+def public_image(post_id: str, name: str, e: int = 0, s: str = ""):
+    """No sign-in: Zalo downloads a post's images through signed links that expire."""
+    path = service.public_file(post_id, name, e, s)
+    if path is None:
+        return Response(status_code=404)
+    return FileResponse(path, headers={"Cache-Control": "public, max-age=3600"})
+
+
+@router.get("/posts/{post_id}/zalo")
+def zalo_preview(post_id: str, actor: Actor = Depends(current_actor)):
+    """The post as Zalo will show it: plain text blocks and images."""
+    post = service.get_post(actor.user_id, post_id)
+    return {"blocks": service.zalo_oa.html_to_blocks(post["html"]), "limits": service.config.ZALO_LIMITS}
 
 
 @router.get("/sites/{site_id}/categories")
