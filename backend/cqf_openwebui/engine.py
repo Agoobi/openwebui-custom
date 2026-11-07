@@ -242,6 +242,11 @@ VN = timezone(timedelta(hours=7))
 CHASE = re.compile(r"\b(co gi (chua|k|ko|khong|moi)|sao roi|the nao roi|co chua|duoc chua|xong chua|bao gia chua|"
                    r"(goi|lien he|bao) (lai )?chua|chua (thay|co) (ai )?(goi|lien he|nhan|bao)|cho (lau|mai)|"
                    r"lau (vay|the|qua)|co ai (khong|k|ko)|(ad|admin|shop) oi)\b")
+# Khach CHUA co lich su ma nhan nhu dang hoi lai chuyen cu ("co gi k ha ad", "sao roi em"): co the da nhan OA truoc khi
+# noi bot, hoac qua kenh khac. Bo "ad oi", "co ai khong": chi la cau chao.
+COLD_CHASE = re.compile(r"\b(co gi (chua|k|ko|khong|moi)|sao roi|the nao roi|co chua|duoc chua|xong chua|bao gia chua|"
+                        r"(goi|lien he|bao) (lai )?chua|chua (thay|co) (ai )?(goi|lien he|nhan|bao)|cho (lau|mai)|"
+                        r"lau (vay|the|qua))\b")
 # Bot bao khach goi vao 1 so ("anh lien he shop qua so ...") va bot nhan so cua khach ("em da ghi nhan so ...")
 YOU_CALL = re.compile(r"(?<!\w)(anh|chị|bạn|mình|quý khách)\s+(vui lòng\s+|có thể\s+|hãy\s+|cứ\s+)?(liên hệ|gọi|nhắn)|"
                       r"liên hệ\s+(trực tiếp\s+)?(với\s+|cho\s+)?(shop|bên em|công ty|cửa hàng|hotline|tổng đài)|"
@@ -608,6 +613,17 @@ class Engine:
                              "xin số điện thoại để nhân viên gọi lại ngay; ")
                          + "xin lỗi vì để khách chờ. Không hỏi lại nhu cầu, không giới thiệu lại công ty. Câu này ĐƯỢC "
                          "nói là đã chuyển nhân viên (hệ thống đã tự báo nhân viên lần nữa), không cần gọi công cụ.")
+        profile = (conv_data.get("item") or {}).get("profile") or {}
+        cold = len(hist) <= 1 and not any(profile.values()) and bool(COLD_CHASE.search(kb.fold(text)))
+        if cold:
+            want_phone = "sdt" in kb.lead_fields(s) and not has_contact
+            extra.append("Khách này CHƯA có tin nào trước đây với em (có thể đã nhắn từ trước khi có em, em không xem được "
+                         "tin cũ), nhưng tin này nghe như đang hỏi lại chuyện cũ. Trả lời đúng 2 câu ngắn, tự nhiên: "
+                         "(1) chào, nếu anh/chị đang hỏi lại yêu cầu đã nhắn trước đó thì nhờ nhắc giúp em sản phẩm / "
+                         "yêu cầu đó" + (" và số điện thoại" if want_phone else "") + " để em báo nhân viên kiểm tra "
+                         "ngay; (2) còn nếu đang cần tìm thiết bị thì cho em biết loại cần tìm. Chỉ vậy: không giới "
+                         "thiệu công ty, không liệt kê sản phẩm, không hỏi câu tìm hiểu nhu cầu nào khác, không xin tên "
+                         "hay công ty lúc này, không nói đã chuyển nhân viên hay nhân viên sẽ gọi.")
         phones_now = [p.strip() for p in kb.PHONE.findall(text)]
         if phones_now:
             extra.append(f"Tin này có số {phones_now[0]}: đó là số CỦA KHÁCH để nhân viên gọi lại. Gọi luu_khach_hang "
@@ -698,6 +714,11 @@ class Engine:
                 yield {"type": "replace", "text": NO_ANSWER_AGAIN if asked else kb.fallback_text(s)}
             break
 
+        if cold and channel == "zalo" and not handed_now:  # nhan vien mo oa.zalo.me xem tin cu cua khach
+            self.inbox.event(conv, "handoff", {
+                "ly_do": "Khách nhắn như đang hỏi lại chuyện cũ nhưng bot chưa có tin cũ: xem lịch sử trên oa.zalo.me",
+                "tom_tat": text[:300], "nhu_cau": "Hỏi lại yêu cầu cũ, chưa rõ sản phẩm"})
+            handed_now = True
         if chasing and not handed_now:  # khach hoi lai: bao nhan vien lan nua (Hop thu dua khach len "Can xu ly")
             self.inbox.event(conv, "handoff", {"ly_do": "Khách nhắn hỏi lại, chưa thấy nhân viên liên hệ",
                                                "tom_tat": text[:300], "nhu_cau": (need or text)[:200]})

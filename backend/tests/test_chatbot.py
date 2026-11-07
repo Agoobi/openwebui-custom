@@ -141,12 +141,37 @@ def test_next_day_the_bot_knows_the_customer(bot):
     assert box.conversation(CONV)["item"]["profile"]["nhu_cau"] != "Có gì k ha ad"  # the need stays the real one
 
 
-def test_a_vague_first_message_is_not_a_chase(bot):
+def test_chase_without_any_history_asks_back_and_alerts_staff(bot):
     engine, box, clock, say = bot
-    model = Model("Dạ bên em chuyên thiết bị phòng Lab ạ, anh cần tìm thiết bị nào ạ?")
+    model = Model("Dạ em chào anh, nếu anh đang hỏi lại yêu cầu trước đó thì anh nhắc giúp em sản phẩm và số điện thoại "
+                  "để em báo nhân viên kiểm tra ngay ạ. Còn nếu anh đang cần tìm thiết bị thì cho em biết loại cần tìm nhé.")
     say("Có gì k ha ad", model)
-    assert "HỎI LẠI" not in model.reminder() and BRIEF not in model.system()
-    assert not events(box, "handoff")
+    reminder = model.reminder()
+    assert "CHƯA có tin nào trước đây" in reminder and "và số điện thoại" in reminder
+    assert "không giới thiệu công ty" in reminder and "HỎI LẠI" not in reminder and BRIEF not in model.system()
+    handoff = events(box, "handoff")
+    assert len(handoff) == 1 and "oa.zalo.me" in handoff[0]["data"]["ly_do"]
+    assert box.conversation(CONV)["item"]["profile"]["nhu_cau"] == "Hỏi lại yêu cầu cũ, chưa rõ sản phẩm"
+    # the customer answers: a normal turn, the earlier ask-back is history now
+    model = Model("Dạ em đã ghi nhận số 0969103875, nhân viên sẽ gọi lại anh về Data Logger sớm ạ.")
+    say("data logger nhiệt độ, sđt 0969103875", model)
+    assert "CHƯA có tin nào trước đây" not in model.reminder()
+
+
+@pytest.mark.parametrize("text", ["ad ơi", "shop ơi", "có ai không ạ", "chào em", "Tôi cần mua Data Logger Temperature"])
+def test_greetings_and_real_questions_are_not_cold_chases(bot, text):
+    engine, box, clock, say = bot
+    model = Model("Dạ em chào anh ạ.")
+    say(text, model)
+    assert "CHƯA có tin nào trước đây" not in model.reminder() and not events(box, "handoff")
+
+
+def test_cold_chase_on_the_website_does_not_alert_staff(bot):
+    engine, box, clock, say = bot
+    model = Model("Dạ em chào anh, anh nhắc giúp em yêu cầu trước đó ạ.")
+    say("sao rồi em", model, conv="web:abc12345")
+    assert "CHƯA có tin nào trước đây" in model.reminder()
+    assert not events(box, "handoff", conv="web:abc12345")
 
 
 def test_coming_back_to_chase_without_a_number_alerts_staff(bot):

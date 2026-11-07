@@ -58,6 +58,9 @@ Sidebar Open WebUI có thêm 5 mục (dưới Search), mở ngay trong vùng n�
    nhân viên lúc nào, nhân viên đã nhắn gì, câu khách hỏi từ trước) và giờ của từng lần nhắn, nên nối tiếp chuyện cũ,
    không chào lại, không hỏi lại câu đã hỏi. Khách hối ("có gì k ad", "sao chưa thấy ai báo giá"): bot xin lỗi, nói
    tiến độ, và khách lại vào **Cần xử lý**.
+   Khách chưa có tin nào với bot mà nhắn như hỏi lại chuyện cũ (vd nhắn OA từ trước khi nối bot): bot không
+   giới thiệu lại công ty, chỉ nhờ khách nhắc lại sản phẩm và số điện thoại; trên Zalo, khách vào **Cần xử lý** để
+   nhân viên xem tin cũ trên oa.zalo.me.
 7. Zalo: tin gửi khách không có Markdown hay câu kiểu "(đang tra cứu…)"; Hộp thư lưu đúng chữ khách đã nhận (sau khi
    rút gọn), lượt sau bot đọc lại đúng câu đó.
 
