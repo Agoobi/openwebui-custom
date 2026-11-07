@@ -50,7 +50,16 @@ Sidebar Open WebUI có thêm 5 mục (dưới Search), mở ngay trong vùng n�
    `luu_khach_hang`, `chuyen_nhan_vien`.
 3. Chặn câu trả lời có giá, %, SĐT, số tài khoản, thời hạn không có trong tài liệu đã tra: khách nhận câu xin liên
    hệ, chủ shop thấy sự kiện "Bot không trả lời được" trong Hộp thư.
-4. Khách để lại thông tin / cần nhân viên → vào **Cần xử lý**. Khách để số mà bot không lưu: hệ thống vẫn bắt số đó.
+4. Khách để lại thông tin / cần nhân viên → vào **Cần xử lý**. Khách để số mà bot không lưu: hệ thống vẫn bắt số đó
+   (kể cả lúc nhân viên đang tiếp khách trong Zalo và bot đang im).
+5. Số điện thoại khách gõ là số **của khách**: bot nói "anh/chị liên hệ shop qua số <số của khách>" thì câu đó bị thay
+   bằng câu xác nhận "em đã ghi nhận số …, nhân viên sẽ gọi lại".
+6. Khách cũ nhắn lại (hôm sau, tuần sau): bot đọc lại 20 tin gần nhất cùng hồ sơ khách (số đã để, nhu cầu, đã chuyển
+   nhân viên lúc nào, nhân viên đã nhắn gì, câu khách hỏi từ trước) và giờ của từng lần nhắn, nên nối tiếp chuyện cũ,
+   không chào lại, không hỏi lại câu đã hỏi. Khách hối ("có gì k ad", "sao chưa thấy ai báo giá"): bot xin lỗi, nói
+   tiến độ, và khách lại vào **Cần xử lý**.
+7. Zalo: tin gửi khách không có Markdown hay câu kiểu "(đang tra cứu…)"; Hộp thư lưu đúng chữ khách đã nhận (sau khi
+   rút gọn), lượt sau bot đọc lại đúng câu đó.
 
 Dữ liệu ở `<DATA_DIR của Open WebUI>/cqf/` (`settings.json`, `knowledge/`, `sources/`, `inbox/`), quyền 600.
 Không ghi gì vào chat / folder của Open WebUI.

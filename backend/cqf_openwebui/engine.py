@@ -3,7 +3,8 @@
 Goi THANG LLM (OpenAI-compatible /chat/completions, cau hinh tren trang Chatbot). Khong qua Hermes: khach la khong
 cham duoc toi cong cu cua tro ly. Model chi co 4 tool: tim_kien_thuc, doc_tai_lieu, luu_khach_hang, chuyen_nhan_vien.
 """
-import asyncio, json, logging, re
+import asyncio, json, logging, re, time
+from datetime import datetime, timedelta, timezone
 
 import aiohttp
 
@@ -140,6 +141,13 @@ def rules(s, asked_contact=False, channel="web"):
             + (f"Câu hỏi tìm hiểu nhu cầu: {' | '.join(questions)}. " if questions else "")
             + "NGỮ CẢNH: trả lời đúng câu khách đang hỏi. Khách chuyển sang sản phẩm / chủ đề khác thì coi là câu hỏi mới, "
             "KHÔNG nhắc lại hay gắn với sản phẩm đã hỏi trước, trừ khi khách nói rõ là liên quan. "
+            "Khách nhắn tiếp sau vài giờ / vài ngày: đọc lại toàn bộ cuộc trò chuyện ở trên và mục [KHÁCH NÀY] trước khi "
+            "trả lời; tin ngắn, mơ hồ ('có gì không ad', 'sao rồi', 'có chưa') là khách hỏi tiếp chuyện cũ, KHÔNG chào lại, "
+            "không giới thiệu lại công ty, không hỏi lại điều khách đã nói. "
+            "SỐ ĐIỆN THOẠI khách gõ trong chat là số CỦA KHÁCH (để nhân viên gọi lại), không bao giờ là số công ty: không "
+            "bảo khách gọi / liên hệ vào số đó. Số công ty chỉ lấy từ THÔNG TIN DOANH NGHIỆP. Khách nhờ gọi lại: gọi "
+            "luu_khach_hang rồi nói nhân viên sẽ gọi lại số đó; không nói 'em là trợ lý ảo nên không gọi được'. "
+            "Không viết câu tả việc mình đang làm như '(đang tra cứu...)', '(đang dùng công cụ...)'. "
             "Khách hỏi chung công ty làm gì / dịch vụ / giải pháp: trả lời từ ghi chú giới thiệu công ty; catalogue của hãng "
             "là tài liệu của hãng sản xuất, không phải dịch vụ của công ty. "
             "SỐ LIỆU: chỉ dùng THÔNG TIN DOANH NGHIỆP, TÀI LIỆU DOANH NGHIỆP bên dưới hoặc kết quả tim_kien_thuc / "
@@ -178,7 +186,7 @@ def is_ended(inbox, conv):
     return any(m.get("role") == "event" and m.get("kind") == "ket_thuc" for m in msgs)
 
 
-def final_reminder(s, channel, asked, handed, has_contact, text):
+def final_reminder(s, channel, asked, handed, has_contact, text, extra=()):
     tv = s.get("tu_van") or {}
     labels = [kb.FIELDS[f] for f in kb.lead_fields(s) if not (channel == "zalo" and f == "zalo")]
     out = ["NHẮC (ưu tiên cao nhất, áp dụng cho câu trả lời này):"]
@@ -206,6 +214,7 @@ def final_reminder(s, channel, asked, handed, has_contact, text):
     if hotline and CONTACT_Q.search(text):
         out.append(f"Khách hỏi số / cách liên hệ công ty: đưa hotline chính thức {hotline} (có trong THÔNG TIN DOANH "
                    "NGHIỆP), không nói là chưa có số.")
+    out += list(extra)
     note = (tv.get("ghi_chu") or "").strip()
     if note:
         out.append("Chủ shop dặn (BẮT BUỘC, đè lên mọi thông tin khác; câu trả lời mẫu trong lời dặn chỉ dùng nguyên văn "
@@ -223,6 +232,111 @@ PROMISED_HANDOFF = re.compile(r"(chuyển|báo|nhờ|để) (cho )?(kỹ sư|nh�
 HANDED_OFF = re.compile(r"(đã|em) báo (nhân viên|kỹ sư)", re.I)
 # bot da xin lien he: "xin / de lai / cho em (ten va) so Zalo / SDT" (bo dau ** Markdown truoc khi so)
 ASKED_CONTACT = re.compile(r"(xin|để lại|cho em)[^.?!\n]{0,30}(zalo|số điện thoại|\bsđt\b|email)", re.I)
+
+
+HISTORY = 20  # so tin gan nhat gui kem cho model; cu hon thi tom trong muc [KHACH NAY]
+STAFF_PREFIX = "[Nhân viên trả lời trong Zalo]"
+RETURN_GAP = 3 * 3600  # khach nhan lai sau chung nay giay: nhac model noi tiep chuyen cu
+VN = timezone(timedelta(hours=7))
+# Khach hoi lai tien do / nhac ("co gi k ha ad", "sao roi", "co chua", "chua thay ai goi"), so tren chu khong dau
+CHASE = re.compile(r"\b(co gi (chua|k|ko|khong|moi)|sao roi|the nao roi|co chua|duoc chua|xong chua|bao gia chua|"
+                   r"(goi|lien he|bao) (lai )?chua|chua (thay|co) (ai )?(goi|lien he|nhan|bao)|cho (lau|mai)|"
+                   r"lau (vay|the|qua)|co ai (khong|k|ko)|(ad|admin|shop) oi)\b")
+# Bot bao khach goi vao 1 so ("anh lien he shop qua so ...") va bot nhan so cua khach ("em da ghi nhan so ...")
+YOU_CALL = re.compile(r"(?<!\w)(anh|chị|bạn|mình|quý khách)\s+(vui lòng\s+|có thể\s+|hãy\s+|cứ\s+)?(liên hệ|gọi|nhắn)|"
+                      r"liên hệ\s+(trực tiếp\s+)?(với\s+|cho\s+)?(shop|bên em|công ty|cửa hàng|hotline|tổng đài)|"
+                      r"hotline|số\s+(của\s+)?(shop|bên em|công ty|tổng đài)|gọi\s+(vào|tới|đến)\s+số", re.I)
+WE_CALL = re.compile(r"ghi nhận|đã nhận|đã lưu|gọi lại\s+(cho\s+)?(?<!\w)(anh|chị|bạn|mình|quý khách)|"
+                     r"(liên hệ|gọi|nhắn)\s+(lại\s+)?(với\s+|cho\s+)?(anh|chị|bạn|mình|quý khách)", re.I)
+
+
+
+def phone_key(p):
+    return re.sub(r"\D", "", p).removeprefix("84").lstrip("0")
+
+
+def misused_phones(sentence, customer, company):
+    """SDT cua khach ma bot noi nhu so cong ty / bao khach goi vao ("anh lien he shop qua so <so khach>").
+    Xet doan ngay truoc con so: "em da ghi nhan so ..." / "nhan vien goi lai anh qua so ..." thi dung."""
+    bad = []
+    plain = sentence.replace("*", "")
+    for m in kb.PHONE.finditer(plain):
+        key = phone_key(m.group(0))
+        before = plain[max(0, m.start() - 80):m.start()]
+        if key in customer and key not in company and YOU_CALL.search(before) and not WE_CALL.search(before):
+            bad.append(m.group(0).strip())
+    return bad
+
+
+def phone_ack(phone):
+    return f"Dạ em đã ghi nhận số {phone}, nhân viên kinh doanh bên em sẽ gọi lại cho anh/chị sớm ạ."
+
+
+def when(t, now):
+    """'09:42 hôm nay', '15:20 hôm qua (06/11)', '15:20 03/11 (4 ngày trước)' theo gio Viet Nam."""
+    a, b = datetime.fromtimestamp(t, VN), datetime.fromtimestamp(now, VN)
+    days = (b.date() - a.date()).days
+    hm = a.strftime("%H:%M")
+    if days <= 0:
+        return f"{hm} hôm nay"
+    if days == 1:
+        return f"{hm} hôm qua ({a:%d/%m})"
+    return f"{hm} {a:%d/%m} ({days} ngày trước)"
+
+
+def duration(seconds):
+    if seconds < 3600:
+        return f"{max(1, int(seconds // 60))} phút"
+    if seconds < 86400:
+        return f"{int(seconds // 3600)} tiếng"
+    return f"{int(seconds // 86400)} ngày"
+
+
+def is_staff(m):
+    return m.get("role") == "assistant" and (m.get("text") or "").startswith(STAFF_PREFIX)
+
+
+def asked_questions(msgs, limit=6):
+    """Cau hoi bot da hoi khach (khong tinh tin nhan vien), moi nhat sau cung."""
+    out = []
+    for m in msgs:
+        if m.get("role") != "assistant" or is_staff(m):
+            continue
+        for q in re.findall(r"[^.!?\n]*\?", (m.get("text") or "").replace("*", "")):
+            q = q.strip(" -•")
+            if len(q) > 8 and q not in out:
+                out.append(q)
+    return out[-limit:]
+
+
+def customer_brief(conv_data, now):
+    """[KHACH NAY]: ho so, nhu cau, da chuyen nhan vien chua, nhan vien da nhan gi, khach hoi gi tu truoc (ngoai doan
+    lich su gui model). Tin cuoi trong conv_data la tin khach vua gui."""
+    msgs = (conv_data or {}).get("messages") or []
+    prof = ((conv_data or {}).get("item") or {}).get("profile") or {}
+    talk = [m for m in msgs if m.get("role") in ("user", "assistant")]
+    prev = talk[:-1]
+    lines = []
+    known = [f"{kb.FIELDS.get(k, k)}: {prof[k]}" for k in ("ten", "sdt", "zalo", "email", "cong_ty", "dia_chi") if prof.get(k)]
+    if known:
+        lines.append("Khách đã để lại (số điện thoại ở đây là của KHÁCH): " + "; ".join(known) + ".")
+    if prof.get("nhu_cau"):
+        lines.append("Nhu cầu đã ghi: " + prof["nhu_cau"])
+    passed = [m for m in msgs if m.get("role") == "event" and m.get("kind") in ("lead", "handoff")]
+    if passed:
+        lines.append(f"Đã chuyển thông tin cho nhân viên kinh doanh lúc {when(passed[-1]['t'], now)}.")
+    staff = [m for m in prev if is_staff(m)]
+    if staff:
+        said = staff[-1]["text"][len(STAFF_PREFIX):].strip()[:200]
+        lines.append(f"Nhân viên đã nhắn khách trong Zalo lúc {when(staff[-1]['t'], now)}: \"{said}\".")
+    if prev:
+        lines.append(f"Khách nhắn lần đầu {when(prev[0]['t'], now)}; tin trước tin này lúc {when(prev[-1]['t'], now)}.")
+    older = [m["text"][:120] for m in prev[:-HISTORY] if m["role"] == "user"]
+    if older:
+        lines.append("Khách từng hỏi (cũ hơn đoạn chat bên dưới): " + " | ".join(older[-6:]))
+    if not lines:
+        return ""
+    return "[KHÁCH NÀY] (đã trao đổi trước; dùng để hiểu ngữ cảnh, không đọc lại cho khách)\n" + "\n".join(lines)
 
 
 LLM_RETRIES = 2
@@ -295,14 +409,24 @@ class _SentenceGuard:
     so voi tai lieu vua tra. Cau dau tien co so khong can cu -> dung, thay ca tin."""
     BOUNDARY = re.compile(r"(?<=[.!?…:;])\s+|\n")
 
-    def __init__(self, evidence, user_text):
+    def __init__(self, evidence, user_text, company=""):
         self.evidence, self.user_text = evidence, user_text
+        self.customer = {phone_key(p) for p in kb.PHONE.findall(user_text)}
+        self.company = {phone_key(p) for p in kb.PHONE.findall(company)}
+        self.misused = []  # SDT khach bi noi nhu so cong ty
         self.text = ""  # tat ca chu model da tra (ke ca chua gui)
         self.sent = ""
         self.buf = ""
 
     def _check(self, part):
         visible = re.sub(r"<think>.*?(</think>|$)", "", part, flags=re.S)
+        visible = kb.NARRATION.sub("", visible)
+        if not visible.strip():
+            return "", []
+        misused = misused_phones(visible, self.customer, self.company)
+        if misused:
+            self.misused += misused
+            return visible, misused
         bad = kb.unsupported_numbers(visible, self.evidence, self.user_text)
         return visible, bad
 
@@ -363,17 +487,18 @@ class Engine:
         self.errors = errors  # SysErrors: loi LLM hien bang do tren Hop thu
         self._locks = {}
 
-    async def answer(self, s, conv, text, page=None):
-        """Ca cau tra loi 1 lan (API /webchat/chat cu)."""
+    async def answer(self, s, conv, text, page=None, record=True):
+        """Ca cau tra loi 1 lan (API /webchat/chat cu, kenh Zalo). record=False: nguoi goi tu ghi tin da gui that vao Hop
+        thu (Zalo: sau khi rut gon, bo Markdown), de luot sau model doc dung cau khach da nhan."""
         reply = ""
-        async for ev in self.stream(s, conv, text, page):
+        async for ev in self.stream(s, conv, text, page, record):
             if ev["type"] == "delta":
                 reply += ev["text"]
             elif ev["type"] == "replace":
                 reply = ev["text"]
         return reply
 
-    async def stream(self, s, conv, text, page=None):
+    async def stream(self, s, conv, text, page=None, record=True):
         """Su kien cho khung chat: status (buoc tra kien thuc...), delta (doan da qua kiem so lieu), replace (thay ca tin:
         bi chan / loi), done. Tin cung khach chay lan luot."""
         lock = self._locks.setdefault(conv, asyncio.Lock())
@@ -413,7 +538,7 @@ class Engine:
                 else:  # khung chat web dang cho: phai co cau tra; da co so thi dung xin lai
                     sent = SYSTEM_ERROR_GOT_CONTACT if phones or self._has_contact(conv, channel) else SYSTEM_ERROR_TEXT
                 yield {"type": "replace", "text": sent}
-            if sent.strip():
+            if sent.strip() and record:
                 self.inbox.message(conv, "assistant", sent.strip())
             yield {"type": "done"}
 
@@ -421,8 +546,11 @@ class Engine:
         llm = hermes_llm.effective(s.get("llm"))  # "Dung LLM cua Hermes": doc cau hinh Hermes moi luot
         if not (llm.get("base_url") and llm.get("model")):
             raise RuntimeError("Chưa cấu hình LLM trên trang Chatbot")
-        hist = [m for m in (self.inbox.conversation(conv) or {}).get("messages", []) if m["role"] in ("user", "assistant")]
+        conv_data = self.inbox.conversation(conv) or {}
+        all_msgs = conv_data.get("messages", [])
+        hist = [m for m in all_msgs if m["role"] in ("user", "assistant")]
         prev_users = [m["text"] for m in hist[:-1] if m["role"] == "user"]
+        now = time.time()
         evidence, user_texts, saved_lead = [], [m["text"] for m in hist if m["role"] == "user"], False
         said, handed_now = "", False  # chu da gui khach luot nay; da goi chuyen_nhan_vien / luu_khach_hang chua
         got_contact = False  # khach de lai SDT / Zalo luot nay -> ket thuc cuoc chat
@@ -456,12 +584,41 @@ class Engine:
         asked = any(m["role"] == "assistant" and ASKED_CONTACT.search(m["text"].replace("*", ""))
                     for m in hist[:-1])
         channel = conv.split(":", 1)[0]
-        messages = [{"role": "system", "content": rules(s, asked, channel) + "\n\n[TÀI LIỆU DOANH NGHIỆP]\n" + docs}]
-        messages += [{"role": m["role"], "content": m["text"]} for m in hist[-12:]]
+        brief = customer_brief(conv_data, now)
+        messages = [{"role": "system", "content": rules(s, asked, channel) + (f"\n\n{brief}" if brief else "")
+                     + "\n\n[TÀI LIỆU DOANH NGHIỆP]\n" + docs}]
+        messages += [{"role": m["role"], "content": m["text"]} for m in hist[-HISTORY:]]
+        passed = any(m["role"] == "event" and m.get("kind") in ("lead", "handoff") for m in all_msgs)
         handed = any(m["role"] == "assistant" and HANDED_OFF.search(m["text"]) for m in hist[:-1])
+        has_contact = self._has_contact(conv, channel)
         # nhac sat cau tra loi, MOI luot: model (nhat la Gemini) hay quen quy tac dau prompt sau vai luot
+        back_later = len(hist) > 1 and now - hist[-2]["t"] > RETURN_GAP
+        extra = [f"Bây giờ là {datetime.fromtimestamp(now, VN):%H:%M %d/%m/%Y} (giờ Việt Nam)."]
+        if back_later:
+            extra.append(f"Khách nhắn lại sau {duration(now - hist[-2]['t'])} (tin trước lúc {when(hist[-2]['t'], now)}): "
+                         "vẫn là khách này, đọc lại cuộc trò chuyện ở trên và mục [KHÁCH NÀY], nối tiếp đúng chuyện cũ; "
+                         "không chào lại như khách mới.")
+        # hoi lai sau khi da chuyen nhan vien, nhan vien da nhan, hoac quay lai sau vai tieng ("sao chua thay ai bao gia")
+        chasing = bool(CHASE.search(kb.fold(text))) and (passed or back_later or any(is_staff(m) for m in hist))
+        if chasing:
+            need = ((conv_data.get("item") or {}).get("profile") or {}).get("nhu_cau") or (prev_users[-1] if prev_users else "")
+            extra.append("Khách đang HỎI LẠI tiến độ chuyện cũ" + (f" ({need[:150]})" if need else "") + ". Trả lời ngắn: "
+                         "yêu cầu đó đã chuyển bộ phận kinh doanh, " + (
+                             "nhân viên sẽ liên hệ qua số khách đã để lại sớm; " if has_contact else
+                             "xin số điện thoại để nhân viên gọi lại ngay; ")
+                         + "xin lỗi vì để khách chờ. Không hỏi lại nhu cầu, không giới thiệu lại công ty. Câu này ĐƯỢC "
+                         "nói là đã chuyển nhân viên (hệ thống đã tự báo nhân viên lần nữa), không cần gọi công cụ.")
+        phones_now = [p.strip() for p in kb.PHONE.findall(text)]
+        if phones_now:
+            extra.append(f"Tin này có số {phones_now[0]}: đó là số CỦA KHÁCH để nhân viên gọi lại. Gọi luu_khach_hang "
+                         f"với sdt đó, rồi nói em đã ghi nhận, nhân viên sẽ gọi lại số {phones_now[0]} sớm. Tuyệt đối "
+                         "không bảo khách gọi / liên hệ vào số này.")
+        questions = asked_questions(hist[:-1])
+        if questions:
+            extra.append("Các câu em ĐÃ hỏi khách (không hỏi lại, kể cả diễn đạt khác; khách đã trả lời thì dùng câu "
+                         "trả lời đó): " + " | ".join(questions))
         messages.append({"role": "system", "content": final_reminder(
-            s, channel, asked, handed, self._has_contact(conv, channel), text)})
+            s, channel, asked, handed, has_contact, text, extra)})
 
         # 2. LLM (stream); vong co tool: model co the tra them / luu khach truoc khi tra loi
         rounds = int(s.get("max_tool_rounds") or 0)
@@ -471,7 +628,7 @@ class Engine:
                 messages.append({"role": "system", "content": (
                     "Hết lượt tra cứu. Trả lời khách NGAY bằng thông tin đã tìm được ở trên, không gọi công cụ, không viết "
                     "thẻ công cụ. Phần nào tài liệu chưa có thì nói rõ là chưa có thông tin phần đó.")})
-            guard = _SentenceGuard("\n".join(evidence) + "\n" + biz, "\n".join(user_texts))
+            guard = _SentenceGuard("\n".join(evidence) + "\n" + biz, "\n".join(user_texts), biz)
             calls, blocked = {}, None
             if round_no == 0:
                 yield {"type": "status", "step": "write", "text": "Đang soạn câu trả lời…"}
@@ -529,7 +686,11 @@ class Engine:
                 yield {"type": "trace", "step": "blocked", "numbers": blocked[:10], "draft": guard.text[:1500]}
             elif not blocked and not guard.sent.strip() and self.trace:
                 yield {"type": "trace", "step": "empty", "rounds": round_no + 1}
-            if blocked:  # so lieu khong co trong tai lieu vua tra: thay ca tin, bao chu shop
+            if blocked and guard.misused:  # noi so cua khach nhu so cong ty: thay bang cau xac nhan so khach
+                self.inbox.event(conv, "guard_blocked", {"ly_do": "Bot nói nhầm số của khách thành số công ty",
+                                                         "khach_hoi": text, "tom_tat": guard.text[:300]})
+                yield {"type": "replace", "text": phone_ack(guard.misused[0])}
+            elif blocked:  # so lieu khong co trong tai lieu vua tra: thay ca tin, bao chu shop
                 self.inbox.event(conv, "guard_blocked", {"khach_hoi": text, "so_lieu_khong_co_can_cu": blocked[:10],
                                                          "tom_tat": guard.text[:300]})
                 yield {"type": "replace", "text": NO_ANSWER_AGAIN if asked else kb.fallback_text(s)}
@@ -537,6 +698,10 @@ class Engine:
                 yield {"type": "replace", "text": NO_ANSWER_AGAIN if asked else kb.fallback_text(s)}
             break
 
+        if chasing and not handed_now:  # khach hoi lai: bao nhan vien lan nua (Hop thu dua khach len "Can xu ly")
+            self.inbox.event(conv, "handoff", {"ly_do": "Khách nhắn hỏi lại, chưa thấy nhân viên liên hệ",
+                                               "tom_tat": text[:300], "nhu_cau": (need or text)[:200]})
+            handed_now = True
         # bot hua chuyen ky su ma quen goi tool: van bao chu shop, 1 lan moi cuoc chat
         if PROMISED_HANDOFF.search(said) and not (handed_now or handed or had_handoff(self.inbox, conv)):
             self.inbox.event(conv, "handoff", {"ly_do": "Bot hẹn chuyển kỹ sư / nhân viên", "tom_tat": text[:300]})
@@ -558,8 +723,21 @@ class Engine:
         prof = ((self.inbox.conversation(conv) or {}).get("item") or {}).get("profile") or {}
         return bool(prof.get("sdt") or (channel != "zalo" and prof.get("zalo")))
 
-    async def shorten(self, s, text):
-        """Kenh Zalo: model van viet qua dai -> nho model rut gon (giu y chinh, cau hoi, cau xin lien he)."""
+    async def shorten(self, s, text, conv=None):
+        """Kenh Zalo: model van viet qua dai -> nho model rut gon (giu y chinh, cau hoi, cau xin lien he). Ban rut gon co
+        so moi, hoac bien so cua khach thanh so cong ty: giu ban goc (da qua kiem tra)."""
+        short = await self._shorten(s, text)
+        if short == text:
+            return text
+        users = "\n".join(m["text"] for m in ((self.inbox.conversation(conv) or {}).get("messages") or [])
+                          if m.get("role") == "user") if conv else ""
+        customer = {phone_key(p) for p in kb.PHONE.findall(users)}
+        company = {phone_key(p) for p in kb.PHONE.findall(" ".join(str(v) for v in (s.get("business") or {}).values()))}
+        if kb.unsupported_numbers(short, text) or misused_phones(short, customer, company):
+            return text
+        return short
+
+    async def _shorten(self, s, text):
         limit = ZALO_MAX.get((s.get("tu_van") or {}).get("do_dai"), ZALO_MAX["ngan"])
         if len(text) <= limit:
             return text
