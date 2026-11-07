@@ -186,14 +186,18 @@ async def _zalo_answer(s, ev, conv):
     if st.staff_active(ev["user_id"], s["zalo"]["pause_hours"]) or ev["kind"] != "user_text":
         # nhan vien dang tiep (hoac khach gui anh / file): chi luu tin vao Hop thu, bot khong tra loi
         box.message(conv, "user", ev["text"] or "[Khách gửi ảnh / tệp]")
+        phones = kb.PHONE.findall(ev["text"] or "")
+        if phones:  # khach de so luc nhan vien dang tiep: van ghi vao ho so khach, dua len "Can xu ly"
+            box.event(conv, "lead", {"sdt": phones[0].strip(), "tin_khach": (ev["text"] or "")[:200]})
         return
     try:
-        reply = await parts()["engine"].answer(s, conv, ev["text"][:1000])
+        reply = await parts()["engine"].answer(s, conv, ev["text"][:1000], record=False)
         if not reply.strip():  # LLM loi: bot im, loi da hien tren Hop thu
             return
-        reply = await parts()["engine"].shorten(s, reply)  # Zalo khong stream: con rut gon duoc truoc khi gui
+        reply = await parts()["engine"].shorten(s, reply, conv)  # Zalo khong stream: con rut gon duoc truoc khi gui
         ids = await zalo.send_text(parts()["home"], s["zalo"], ev["user_id"], reply, st)
         st.mark_sent(ids)
+        box.message(conv, "assistant", zalo.plain(reply))  # dung chu khach nhan duoc: luot sau model doc lai cau nay
     except Exception as e:
         logger.warning("[cqf] zalo: khong tra loi duoc: %s", e)
         box.event(conv, "guard_blocked", {"ly_do": "Không gửi được tin Zalo", "tom_tat": str(e)[:200]})

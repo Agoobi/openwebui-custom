@@ -14,6 +14,8 @@ from pathlib import Path
 
 import aiohttp
 
+from . import kb
+
 logger = logging.getLogger("cqf_openwebui.zalo")
 API = "https://openapi.zalo.me"
 OAUTH = "https://oauth.zaloapp.com/v4/oa/access_token"
@@ -151,7 +153,7 @@ def parse(body):
 def plain(md: str) -> str:
     """Markdown cua bot -> chu Zalo hien duoc (Zalo khong hien Markdown)."""
     out = []
-    for line in md.replace("\r\n", "\n").split("\n"):
+    for line in kb.NARRATION.sub("", md).replace("\r\n", "\n").split("\n"):
         s = line.strip()
         if re.fullmatch(r"\|?\s*:?-{2,}.*", s):
             continue  # dong ke cua bang

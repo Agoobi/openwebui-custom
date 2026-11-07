@@ -256,7 +256,10 @@ def read_pdf(path):
 MONEY = re.compile(r"(\d[\d.,]*)\s*(tỷ|tỉ|triệu|tr|nghìn|ngàn|k|đồng|đ|vnđ|vnd|₫)(?:\s*(\d)(?![\d.,%]))?(?![a-zà-ỹ])", re.I)
 DURATION = re.compile(r"(\d+(?:[.,]\d+)?)\s*(ngày|tháng|năm|tuần|giờ|tiếng|phút|h)(?![a-zà-ỹ])", re.I)
 PERCENT = re.compile(r"(\d+(?:[.,]\d+)?)\s*(%|phần trăm)", re.I)
-PHONE = re.compile(r"(?<!\d)(?:\+?84|0)(?:[\s.\-]?\d){8,10}(?!\d)")
+# Model ta viec minh dang lam ("*(Đang sử dụng công cụ tìm kiếm...)*"): khach khong can doc (bo khoi tin gui khach)
+NARRATION = re.compile(r"[*_]*[(\[]\s*(?:em\s+)?đang\s+(?:sử dụng|dùng|tra|tìm|kiểm tra|xử lý|gọi|chuyển|lưu)"
+                       r"[^()\[\]\n]{0,160}[)\]][*_]*", re.I)
+PHONE =re.compile(r"(?<!\d)(?:\+?84|0)(?:[\s.\-]?\d){8,10}(?!\d)")
 GROUPED = re.compile(r"(?<![\d.,])\d{1,3}(?:[.,]\d{3})+(?![\d.,]*\d)")  # 99.000 / 1.200.000: gia khong don vi
 NUMBER = re.compile(r"\d[\d.,]*")
 LONGNUM = re.compile(r"(?<![\d.,])\d(?:[\d.\- ]*\d)?(?![\d])")  # so tai khoan, ma don
