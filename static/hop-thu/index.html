@@ -97,6 +97,8 @@ button { cursor: pointer; }
 .item[aria-selected="true"] .avatar { background: var(--surface); }
 .avatar .ch { position: absolute; right: -2px; bottom: -2px; width: 16px; height: 16px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: #fff; border: 2px solid var(--surface); }
 .avatar .ch svg { width: 9px; height: 9px; }
+.avatar .ch.zalo { background: #fff; }
+.avatar .ch img { width: 12px; height: 12px; display: block; }
 .row1 { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
 .name { font-weight: 500; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .item.unread .name { font-weight: 700; }
@@ -273,6 +275,6 @@ button { cursor: pointer; }
 </main>
 <div class="toast" id="toast" role="status" hidden></div>
 
-<script src="/static/hop-thu/hop-thu.js?v=7" defer></script>
+<script src="/static/hop-thu/hop-thu.js?v=8" defer></script>
 </body>
 </html>

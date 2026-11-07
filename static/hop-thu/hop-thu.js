@@ -140,11 +140,22 @@
 	}
 	const GLOBE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/></svg>';
 
+	// Kenh cua khach: Zalo OA (logo Zalo) hay chat tren website (qua dia cau)
+	const channelName = (it) => (it.kenh === 'zalo' ? 'Zalo OA' : 'Chat website');
+
 	function avatar(it, node) {
 		node.textContent = initial(it);
-		const ch = el('span', 'ch');
-		ch.innerHTML = GLOBE; // icon co dinh, khong co chu cua khach
-		ch.title = 'Chat website';
+		const zalo = it.kenh === 'zalo';
+		const ch = el('span', zalo ? 'ch zalo' : 'ch');
+		if (zalo) {
+			const img = el('img');
+			img.src = '/static/lich-dang/zalo.svg';
+			img.alt = '';
+			ch.append(img);
+		} else {
+			ch.innerHTML = GLOBE; // icon co dinh, khong co chu cua khach
+		}
+		ch.title = channelName(it);
 		node.append(ch);
 		return node;
 	}
@@ -326,7 +337,7 @@
 		$('dName').textContent = nameOf(it);
 		const [label] = STATUS[it.status] || [it.status];
 		const note = noteText(it.note);
-		$('dSub').textContent = `Chat website · ${label}${note ? ' · ' + note : ''}`;
+		$('dSub').textContent = `${channelName(it)} · ${label}${note ? ' · ' + note : ''}`;
 
 		const acts = $('dActions');
 		acts.replaceChildren();
