@@ -5,7 +5,7 @@ thức, xem khách và lead ngay trong Open WebUI. Không cần cài gì bên He
 không chạm được tới công cụ của trợ lý. Không fork Open WebUI: thêm một gói Python nhỏ (`backend/cqf_openwebui`) và
 vài trang tĩnh.
 
-Sidebar Open WebUI có thêm 5 mục (dưới Search), mở ngay trong vùng nội dung, sidebar giữ nguyên:
+Sidebar Open WebUI có thêm 6 mục (dưới Search), mở ngay trong vùng nội dung, sidebar giữ nguyên:
 
 | Mục | Làm gì |
 | --- | --- |
@@ -15,6 +15,7 @@ Sidebar Open WebUI có thêm 5 mục (dưới Search), mở ngay trong vùng n�
 | **Thử chatbot** | Chat với bot như khách (cùng cài đặt, kiến thức đang bật; chạy cả khi chatbot đang tắt trên website). Bên phải là "Bot đã làm gì" cho từng câu trả lời: các câu tra tự động, đoạn tài liệu đưa cho bot, công cụ bot gọi thêm và kết quả, số liệu bị chặn. Tin thử lưu riêng trên server (`cqf/test/`, theo từng quản trị viên), không vào Hộp thư; nút **Lịch sử** mở lại các cuộc thử trước, máy / trình duyệt nào cũng thấy. |
 | **Kiến thức** | Kiểu Obsidian: tải file Word / Excel / CSV / PDF có chữ / TXT / MD lên (kéo thả được) thành ghi chú, xem / sửa Markdown, `[[liên kết]]` giữa ghi chú, mục lục, ghi chú trỏ tới, bật/tắt từng ghi chú, cảnh báo khi số liệu sửa tay khác file gốc, **thử tìm như bot**. |
 | **Lịch đăng** | Lịch bài WordPress và Zalo OA: xem **Tuần / Tháng / Danh sách**, chọn **múi giờ** xem, lọc Sắp đăng / Đã đăng / Lỗi, cột **Chưa lên lịch** (kéo vào lịch để hẹn), bấm ô trống để hẹn bài vào giờ đó, kéo bài đã hẹn để đổi giờ. Bấm 1 bài: xem trước như trên web, ảnh bìa, đổi giờ, **khung giờ trống kế tiếp**, **Đăng thật / Lưu nháp trên WordPress**, huỷ lịch (bài về Chưa lên lịch), thử lại khi lỗi, lịch sử. **Cài đặt**: kết nối nhiều site WordPress (Application Password, kiểm tra kết nối, mã hoá khi lưu), múi giờ, chế độ mặc định, site mặc định, **khung giờ đăng** hằng tuần. **Quy tắc** viết sẵn trên trang. Mỗi người dùng Open WebUI có lịch, site, cài đặt riêng. |
+| **Săn lead** | Cơ hội B2B (mời thầu / chào giá thiết bị, dự án nhà máy mới, mở rộng, tín hiệu như ĐTM, tuyển BQLDA) và người ra quyết định do agent Hermes (skill `san-lead-b2b`) tìm. Lọc ngành / loại / tỉnh (tên tỉnh cũ vẫn tìm được), điểm 0–100 kèm lý do, chi tiết + link nguồn + gợi ý tiếp cận, trạng thái Mới / Đang theo / Đã liên hệ / Bỏ qua, ghi chú, xuất CSV, các lần quét (số tin, chi phí). **Cài đặt**: key Apify (mã hoá, kiểm tra gói và mức dùng tháng), hàng bên bán, 7 ngành (theo dõi / ưu tiên), vùng theo 34 tỉnh mới, nguồn, trang theo dõi thêm, trần chi phí. **Quy tắc** viết sẵn trên trang. |
 
 ## Lịch đăng
 
@@ -41,6 +42,19 @@ Sidebar Open WebUI có thêm 5 mục (dưới Search), mở ngay trong vùng n�
 - Dữ liệu: `<DATA_DIR>/cqf/lich/` (`lich.db`, `covers/`, `secret.key`, `agent.json`), quyền 600 / 700.
 - Test: `cd backend && python -m pytest -q tests` (cần fastapi, httpx, cryptography, pytest; test đồng bộ lịch chạy
   trên bản sao `/opt/open-webui/data/webui.db` nếu máy có Open WebUI).
+
+## Săn lead
+
+- Agent Hermes (skill `san-lead-b2b` trong [skills-hubs](https://github.com/Agoobi/skills-hubs)) quét Google News, các
+  trang danh sách được theo dõi (ĐTM của tỉnh, thông báo mời thầu doanh nghiệp), Google qua Apify, LinkedIn qua Apify, cho
+  LLM của Hermes đọc tin, rồi gửi cơ hội và người liên hệ lên `/api/v1/cqf/lead/agent/*` bằng token trong
+  `cqf/lead/agent.json` (tạo khi Open WebUI khởi động). Agent lấy key Apify, cài đặt và LLM qua `GET /agent/config`.
+- Trang kiểm lại mọi thứ agent gửi: tên doanh nghiệp cụ thể, 7 ngành, loại, link nguồn, tỉnh (đổi tên cũ sang tên mới sau
+  1/7/2025, ngoài vùng thì không nhận), hạn chót, tin cũ. Gộp trùng theo công ty + tỉnh + nhóm (mời thầu thêm tên gói),
+  giữ trạng thái và ghi chú của sale. Người liên hệ gộp theo link LinkedIn.
+- Mọi người dùng Open WebUI xem và đổi trạng thái; chỉ quản trị viên sửa Cài đặt, key Apify, xoá. Agent không đổi trạng
+  thái hay ghi chú của sale.
+- Dữ liệu: `<DATA_DIR>/cqf/lead/` (`lead.db`, `secret.key`, `agent.json`), quyền 600 / 700.
 
 ## Một lượt trả lời
 
