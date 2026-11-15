@@ -452,6 +452,22 @@ def _same_company(a: str, b: str) -> bool:
     return len(word) >= 3 and word not in _GENERIC_WORDS
 
 
+def _core(key: str) -> set:
+    """The words that name the company: no legal form, no common words, no province names ('baf binh dinh' -> {'baf'})."""
+    words = f" {key} "
+    for _, _, written in _province_index():
+        words = words.replace(f" {fold(written)} ", " ")
+    return {w for w in words.split() if len(w) >= 3 and w not in _GENERIC_WORDS}
+
+
+def _same_company_loose(a: str, b: str) -> bool:
+    """'BAF Bình Định' and 'Nông nghiệp BAF Việt Nam': the same name once common words and places are dropped."""
+    if _same_company(a, b):
+        return True
+    ca, cb = _core(a), _core(b)
+    return bool(ca) and bool(cb) and (ca <= cb or cb <= ca)
+
+
 def _similar(conn, key: str):
     """An opportunity filed under a slightly different company name: same province (or none), same bucket, and for
     tenders the same package name."""
@@ -463,7 +479,7 @@ def _similar(conn, key: str):
             continue
         if province and other_province and province != other_province:
             continue
-        if _same_company(company, other):
+        if _same_company_loose(company, other):
             return row
     return None
 

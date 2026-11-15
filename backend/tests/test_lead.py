@@ -170,6 +170,14 @@ def test_one_distinctive_word_is_the_same_company():
     assert saved["sources"][0]["site"] == "cafeland.vn"  # the article before the Google News redirect
 
 
+def test_same_name_without_common_words_and_places_is_merged():
+    base = dict(kind="du_an_moi", title="", deadline=None, province="Gia Lai", industry="fnb")
+    service.upsert_opportunities([opp(company="BAF Bình Định", sources=[{"url": "https://a.vn/baf"}], **base)])
+    result = service.upsert_opportunities([opp(company="Công ty Cổ phần Nông nghiệp BAF Việt Nam",
+                                               sources=[{"url": "https://b.vn/baf"}], **base)])
+    assert result["merged"] and not result["created"]
+
+
 def test_equipment_written_as_one_string_is_split():
     result = service.upsert_opportunities([opp(equipment="Tủ an toàn sinh học, nồi hấp tiệt trùng; máy ly tâm")])
     saved = service.get_opportunity(result["created"][0]["id"])
