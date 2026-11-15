@@ -29,6 +29,7 @@ from . import config, service
 from .service import Actor, Refused
 
 router = APIRouter()
+config.agent_token()  # agent.json exists from the first start: the skill reads it before its first call
 
 
 def _token_of(request: Request) -> str | None:

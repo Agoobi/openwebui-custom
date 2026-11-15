@@ -101,6 +101,18 @@ _VAGUE_COMPANY = {"", "khong ro", "chua ro", "unknown", "n a", "na", "doanh nghi
                   "nha dau tu", "mot doanh nghiep", "nha may"}
 
 
+_VAGUE_PREFIXES = ("chua ro", "khong ro", "chua xac dinh", "khong xac dinh", "chua co ten", "khong co ten",
+                   "khong neu", "chua neu", "unknown", "not specified", "n a ", "an danh", "mot cong ty", "mot doanh nghiep",
+                   "nha dau tu nuoc ngoai", "doanh nghiep chua", "chu dau tu chua")
+
+
+def vague_company(name: str) -> bool:
+    """'Chưa rõ tên doanh nghiệp', 'Nhà đầu tư', 'Không nêu'... are not a company to call."""
+    folded = fold(name)
+    return (folded in _VAGUE_COMPANY or len(company_key(name)) < 2
+            or any(f"{folded} ".startswith(p) for p in _VAGUE_PREFIXES) or " chua ro" in f" {folded}")
+
+
 def company_key(name: str) -> str:
     key = f" {fold(name)} "
     for word in _COMPANY_WORDS:
@@ -396,12 +408,25 @@ def _dedupe_key(company: str, kind: str, province: str, title: str) -> str:
     return base
 
 
+# Words too common to name a company on their own ("Thủy sản" + "Hậu Giang" are not one company with "Dược Hậu Giang").
+_GENERIC_WORDS = set("""thuy san hai duoc pham thuc an uong sua viet nam phat minh hoang long thanh phu quoc te sai gon
+mekong tan hung cuu dong bac trung tay nong nghiep che bien xuat nhap khau dau tu thuong mai dich vu thiet bi y khoa hoc
+ky thuat cong nghe moi truong sinh hoc thu chan nuoi hoa chat my nha may mien sao vang kim ngoc bao an binh thinh loc
+phuc dai vinh hau giang ca mau can tho bach hop tac xa cp tm dv sx xnk""".split())
+
+
 def _same_company(a: str, b: str) -> bool:
-    """'minh phu' and 'thuy san minh phu' are one company; 'duoc hau giang' and 'thuy san hau giang' are not."""
+    """'minh phu' and 'thuy san minh phu' are one company; 'duoc hau giang' and 'thuy san hau giang' are not;
+    'baf' (one distinctive word) and 'che bien thuc pham baf binh dinh' are one."""
     if a == b:
         return True
     small, big = sorted((set(a.split()), set(b.split())), key=len)
-    return len(small) >= 2 and small <= big
+    if not small or not small <= big:
+        return False
+    if len(small) >= 2:
+        return True
+    word = next(iter(small))
+    return len(word) >= 3 and word not in _GENERIC_WORDS
 
 
 def _similar(conn, key: str):
@@ -438,6 +463,7 @@ def _sources(raw) -> list[dict]:
         day = _parse_day(item.get("published"))
         out.append({"url": url, "title": _clean(item.get("title"), 300), "site": urllib.parse.urlsplit(url).netloc,
                     "published": day.isoformat() if day else ""})
+    out.sort(key=lambda s: s["site"] == "news.google.com")  # the article itself first, Google News redirects last
     return out
 
 
@@ -446,7 +472,7 @@ def validate_opportunity(item: dict, settings: dict) -> dict:
     if not isinstance(item, dict):
         raise Refused("không phải object")
     company = _clean(item.get("company"), 200)
-    if fold(company) in _VAGUE_COMPANY or len(company_key(company)) < 2:
+    if vague_company(company):
         raise Refused("thiếu tên doanh nghiệp / chủ đầu tư cụ thể")
     industry = item.get("industry")
     if industry not in config.INDUSTRIES:
@@ -484,7 +510,10 @@ def validate_opportunity(item: dict, settings: dict) -> dict:
         published = None  # a date in the future is a misread, not a fact
     if published and (_today() - published).days > settings["lookback_days"] and not (deadline and deadline >= _today()):
         raise Refused(f"tin cũ ({published.isoformat()}, quá {settings['lookback_days']} ngày)")
-    equipment = [e for e in (_clean(x, 120) for x in (item.get("equipment") or [])[:15]) if e]
+    raw_equipment = item.get("equipment") or []
+    if isinstance(raw_equipment, str):  # "máy A, máy B" from a sloppy extraction
+        raw_equipment = re.split(r"[;,\n]+", raw_equipment)
+    equipment = [e for e in (_clean(x, 120) for x in list(raw_equipment)[:15]) if len(e) >= 3]
     contact = item.get("contact") or {}
     contact = {k: _clean(contact.get(k), 160) for k in ("name", "phone", "email")} if isinstance(contact, dict) else {}
     plant_status = item.get("plant_status") if item.get("plant_status") in config.PLANT_STATUS else (
@@ -737,7 +766,7 @@ def validate_person(item: dict, settings: dict) -> dict:
     if len(fold(name)) < 2 or fold(name) in {"linkedin member", "thanh vien linkedin", "unknown"}:
         raise Refused("thiếu tên người")
     company = _clean(item.get("company"), 200)
-    if fold(company) in _VAGUE_COMPANY:
+    if vague_company(company):
         raise Refused("thiếu công ty")
     url = linkedin_url(item.get("linkedin_url"))
     if item.get("linkedin_url") and not url:
@@ -745,7 +774,9 @@ def validate_person(item: dict, settings: dict) -> dict:
     title = _clean(item.get("title"), 200)
     if not title:
         raise Refused("thiếu chức danh")
-    role = item.get("role_group") if item.get("role_group") in config.ROLE_GROUPS else role_of(title)
+    role = item.get("role_group") if item.get("role_group") in config.ROLE_GROUPS else "khac"
+    if role == "khac":
+        role = role_of(title)
     industry = item.get("industry") if item.get("industry") in config.INDUSTRIES else ""
     location = _clean(item.get("location") or item.get("province"), 200)
     province = province_of(location)[0] if location else ""

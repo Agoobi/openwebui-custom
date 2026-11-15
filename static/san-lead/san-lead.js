@@ -804,7 +804,7 @@
 		num('max_usd_per_run', 'Trần mỗi lần quét (USD)', '0.05');
 		num('max_usd_per_month', 'Trần mỗi tháng (USD)', '0.5', `Gói Apify hiện tại: ${k.limit_usd ? usd(k.limit_usd) : 'chưa rõ'} / tháng.`);
 		num('google_queries_per_run', 'Số truy vấn Google mỗi lần', '1');
-		num('linkedin_sweep_per_run', 'Số hồ sơ LinkedIn tìm theo chức danh mỗi lần', '5', '0 = tắt lượt tìm theo chức danh.');
+		num('linkedin_sweep_per_run', 'Số hồ sơ LinkedIn tìm theo chức danh (mỗi tuần 1 lần)', '25', '0 = tắt. 25 hồ sơ khoảng $0.10.');
 		num('people_per_opportunity', 'Số người tìm cho mỗi cơ hội', '1');
 		num('min_score_for_people', 'Chỉ tìm người cho cơ hội từ điểm', '5');
 		num('lookback_days', 'Bỏ tin cũ hơn (ngày)', '1');

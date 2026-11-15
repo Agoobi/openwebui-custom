@@ -178,9 +178,9 @@ DEFAULT_SETTINGS = {
     },
     "watch_pages": [],  # [{"url", "label"}]; empty = the built-in list in the skill
     "extra_keywords": [],  # extra equipment / signal words to search
-    "google_queries_per_run": 24,
+    "google_queries_per_run": 18,
     "people_per_opportunity": 4,
-    "linkedin_sweep_per_run": 25,  # profiles found by title x industry x region (module 1), 0 = off
+    "linkedin_sweep_per_run": 25,  # profiles found by title x industry (module 1), once a week; 0 = off
     "min_score_for_people": 55,
     "max_usd_per_run": 0.6,
     "max_usd_per_month": 4.5,  # stop before the Apify plan's monthly limit

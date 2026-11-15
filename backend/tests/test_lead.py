@@ -84,6 +84,8 @@ def test_good_tender_is_saved_with_score_and_reasons():
 
 @pytest.mark.parametrize("extra,reason", [
     ({"company": "Không rõ"}, "tên doanh nghiệp"),
+    ({"company": "Chưa rõ tên doanh nghiệp"}, "tên doanh nghiệp"),
+    ({"company": "Nhà đầu tư nước ngoài (chưa công bố)"}, "tên doanh nghiệp"),
     ({"industry": "y_te"}, "7 ngành"),
     ({"kind": "khac"}, "không hợp lệ"),
     ({"sources": []}, "link nguồn"),
@@ -147,6 +149,22 @@ def test_similar_names_are_not_merged_across_companies():
     assert result["created"]
 
 
+def test_one_distinctive_word_is_the_same_company():
+    base = dict(kind="du_an_moi", title="", deadline=None, province="Bình Định", industry="fnb")
+    service.upsert_opportunities([opp(company="BAF", sources=[{"url": "https://news.google.com/rss/articles/x"}], **base)])
+    result = service.upsert_opportunities([opp(company="Công ty TNHH Chế biến Thực phẩm BAF Bình Định",
+                                               sources=[{"url": "https://cafeland.vn/baf"}], **base)])
+    assert result["merged"]
+    saved = service.get_opportunity(result["merged"][0]["id"])
+    assert saved["sources"][0]["site"] == "cafeland.vn"  # the article before the Google News redirect
+
+
+def test_equipment_written_as_one_string_is_split():
+    result = service.upsert_opportunities([opp(equipment="Tủ an toàn sinh học, nồi hấp tiệt trùng; máy ly tâm")])
+    saved = service.get_opportunity(result["created"][0]["id"])
+    assert saved["equipment"] == ["Tủ an toàn sinh học", "nồi hấp tiệt trùng", "máy ly tâm"]
+
+
 def test_two_tenders_of_one_company_stay_apart():
     service.upsert_opportunities([opp()])
     result = service.upsert_opportunities([opp(title="Thư mời báo giá gói Máy đo độ cứng bán tự động",
@@ -187,7 +205,7 @@ def test_people_dedupe_by_linkedin_and_raise_the_score():
 
 
 @pytest.mark.parametrize("title,group", [
-    ("Plant Manager", "ky_thuat"), ("Giám đốc Kỹ thuật", "ky_thuat"), ("QA Manager", "san_xuat_qa"),
+    ("Plant Manager", "ky_thuat"), ("Factory Director", "ky_thuat"), ("Giám đốc Kỹ thuật", "ky_thuat"), ("QA Manager", "san_xuat_qa"),
     ("Trưởng phòng Mua hàng", "mua_sam"), ("Sales Executive", "khac"),
 ])
 def test_role_groups_from_title(title, group):
