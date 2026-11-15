@@ -6,7 +6,7 @@
 #   mac dinh: /opt/open-webui/venv  open-webui
 #
 # Viec lam:
-#   1. Trang tinh: loader.js, custom.css, hop-thu/, chatbot/, thu-chat/, kien-thuc/, lich-dang/, cqf/ vao thu muc static cua Open WebUI
+#   1. Trang tinh: loader.js, custom.css, hop-thu/, chatbot/, thu-chat/, kien-thuc/, lich-dang/, san-lead/, cqf/ vao thu muc static cua Open WebUI
 #      (ca <goi>/static va <goi>/frontend/static: luc khoi dong Open WebUI chep loader.js tu frontend sang static).
 #   2. Backend: file cqf_openwebui.pth trong venv tro toi <repo>/backend (khong chep, khong sua file Open WebUI).
 #   3. systemd drop-in: chay "python -m cqf_openwebui serve" thay "open-webui serve" (= Open WebUI goc + /api/v1/cqf).
@@ -35,7 +35,7 @@ for dir in "$PKG/static" "$PKG/frontend/static"; do
     [ -f "$dir/$f" ] && [ ! -f "$dir/$f.orig" ] && cp -p "$dir/$f" "$dir/$f.orig"
     install -m 0644 "$SRC/$f" "$dir/$f"
   done
-  for page in hop-thu chatbot thu-chat kien-thuc lich-dang cqf; do
+  for page in hop-thu chatbot thu-chat kien-thuc lich-dang san-lead cqf; do
     install -d -m 0755 "$dir/$page"
     find "$SRC/$page" -maxdepth 1 -type f \( -name '*.html' -o -name '*.js' -o -name '*.css' -o -name '*.svg' \) -exec install -m 0644 {} "$dir/$page/" \;
   done
@@ -52,7 +52,7 @@ UNIT_DIR="/etc/systemd/system/$SERVICE.service.d"
 install -d -m 0755 "$UNIT_DIR"
 ARGS="$(systemctl cat "$SERVICE" | grep -v '^#' | sed -n 's/^ExecStart=.* serve\(.*\)$/\1/p' | tail -1)"
 cat > "$UNIT_DIR/cqf.conf" <<EOF
-# openwebui-custom: Open WebUI goc + /api/v1/cqf (chatbot website, Hop thu, Kien thuc, Lich dang). Xoa file nay de go.
+# openwebui-custom: Open WebUI goc + /api/v1/cqf (chatbot website, Hop thu, Kien thuc, Lich dang, San lead). Xoa file nay de go.
 [Service]
 ExecStart=
 ExecStart=$PY -m cqf_openwebui serve${ARGS:- --host 127.0.0.1 --port 8080}

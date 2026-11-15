@@ -1,13 +1,14 @@
 /*
  * Open WebUI custom loader (Agoobi). Open WebUI tu nap file nay tren moi trang (/static/loader.js).
- * Them 5 hang vao sidebar, ngay duoi hang Search: Hop thu (kem so khach can xu ly), Chatbot (cai dat), Thu chatbot, Kien thuc,
- * Lich dang (bai WordPress hen gio; #lich-dang/post=<id> mo thang 1 bai).
+ * Them 6 hang vao sidebar, ngay duoi hang Search: Hop thu (kem so khach can xu ly), Chatbot (cai dat), Thu chatbot, Kien thuc,
+ * Lich dang (bai WordPress hen gio; #lich-dang/post=<id> mo thang 1 bai), San lead (co hoi B2B + nguoi lien he do agent tim;
+ * #san-lead/cai-dat mo thang Cai dat).
  * Bam 1 hang thi trang tuong ung mo trong vung noi dung, sidebar giu nguyen (Ctrl/Cmd + bam: tab moi, cung co sidebar).
  * Du lieu: backend cqf_openwebui chay trong Open WebUI (/api/v1/cqf). Khong sua gi khac cua Open WebUI.
  * Bam vao cau truc sidebar cua Open WebUI 0.11.4 (#sidebar-search-button): nang ban thi kiem lai.
  */
 (() => {
-	const V = 16; // doi khi doi trang de khong dinh cache
+	const V = 17; // doi khi doi trang de khong dinh cache
 	const icon = (d) =>
 		`<svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 	const PAGES = [
@@ -20,7 +21,9 @@
 		{ hash: 'kien-thuc', label: 'Kiến thức', src: '/static/kien-thuc/index.html',
 			icon: icon('<path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/><path d="M8 7h8M8 11h6"/>') },
 		{ hash: 'lich-dang', label: 'Lịch đăng', src: '/static/lich-dang/index.html',
-			icon: icon('<path d="M8 2v4M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="m9 16 2 2 4-4"/>') }
+			icon: icon('<path d="M8 2v4M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="m9 16 2 2 4-4"/>') },
+		{ hash: 'san-lead', label: 'Săn lead', src: '/static/san-lead/index.html',
+			icon: icon('<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>') }
 	];
 	let todo = 0;
 	let frame = null;
