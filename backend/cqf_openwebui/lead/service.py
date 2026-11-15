@@ -110,11 +110,28 @@ _PLACE_PREFIXES = ("chu dau tu", "khu cong nghiep", "kcn ", "cum cong nghiep", "
                    "ubnd", "uy ban nhan dan", "so ", "ban quan ly", "du an ")
 
 
+_COUNTRIES = ("han quoc", "nhat ban", "trung quoc", "dai loan", "thai lan", "singapore", "malaysia", "indonesia", "an do",
+              "hoa ky", "chau au", "nuoc ngoai", "ba lan", "ha lan", "dan mach", "thuy dien", "korea", "japan", "china",
+              "taiwan", "fdi")
+
+
+def _only_descriptors(name: str) -> bool:
+    """'Tập đoàn thực phẩm Hàn Quốc', 'Nhà đầu tư Nhật Bản': an industry and a country, no name."""
+    key = f" {company_key(name)} "
+    found = [c for c in _COUNTRIES if f" {c} " in key]
+    if not found:
+        return False
+    for c in found:
+        key = key.replace(f" {c} ", " ")
+    rest = key.split()
+    return all(w in _GENERIC_WORDS or w in {"nha", "dau", "tu", "doanh", "nghiep", "nhom"} for w in rest)
+
+
 def vague_company(name: str) -> bool:
     """'Chưa rõ tên doanh nghiệp', 'Chủ đầu tư dự án...', 'Khu công nghiệp Phù Mỹ', 'Cà Mau'... are not a company to call."""
     folded = fold(name)
     padded = f"{folded} "
-    return (folded in _VAGUE_COMPANY or len(company_key(name)) < 2
+    return (folded in _VAGUE_COMPANY or len(company_key(name)) < 2 or _only_descriptors(name)
             or any(padded.startswith(p) for p in _VAGUE_PREFIXES + _PLACE_PREFIXES) or " chua ro" in f" {folded}"
             or province_of(name)[1] and fold(province_of(name)[1].replace("TP. ", "")) == folded.removeprefix("tp "))
 

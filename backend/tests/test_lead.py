@@ -46,7 +46,8 @@ def opp(**extra):
 
 
 def test_real_companies_named_after_places_are_kept():
-    for name in ("Công ty CP Thủy sản Cà Mau", "Công ty Cổ phần Dược Hậu Giang", "Tập đoàn TH"):
+    for name in ("Công ty CP Thủy sản Cà Mau", "Công ty Cổ phần Dược Hậu Giang", "Tập đoàn TH",
+                 "Công ty TNHH CJ Foods Việt Nam", "Công ty Cổ phần Thực phẩm Sài Gòn", "Orion Food Vina"):
         assert not service.vague_company(name), name
 
 
@@ -94,6 +95,7 @@ def test_good_tender_is_saved_with_score_and_reasons():
     ({"company": "Chủ đầu tư dự án khu liên hợp dược phẩm"}, "tên doanh nghiệp"),
     ({"company": "Khu công nghiệp Phù Mỹ"}, "tên doanh nghiệp"),
     ({"company": "Cà Mau"}, "tên doanh nghiệp"),
+    ({"company": "Tập đoàn thực phẩm Hàn Quốc"}, "tên doanh nghiệp"),
     ({"kind": "tin_hieu", "published": None, "deadline": None}, "không rõ ngày"),
     ({"industry": "y_te"}, "7 ngành"),
     ({"kind": "khac"}, "không hợp lệ"),
