@@ -106,11 +106,17 @@ _VAGUE_PREFIXES = ("chua ro", "khong ro", "chua xac dinh", "khong xac dinh", "ch
                    "nha dau tu nuoc ngoai", "doanh nghiep chua", "chu dau tu chua")
 
 
+_PLACE_PREFIXES = ("chu dau tu", "khu cong nghiep", "kcn ", "cum cong nghiep", "ccn ", "khu kinh te", "tinh ", "thanh pho ",
+                   "ubnd", "uy ban nhan dan", "so ", "ban quan ly", "du an ")
+
+
 def vague_company(name: str) -> bool:
-    """'Chưa rõ tên doanh nghiệp', 'Nhà đầu tư', 'Không nêu'... are not a company to call."""
+    """'Chưa rõ tên doanh nghiệp', 'Chủ đầu tư dự án...', 'Khu công nghiệp Phù Mỹ', 'Cà Mau'... are not a company to call."""
     folded = fold(name)
+    padded = f"{folded} "
     return (folded in _VAGUE_COMPANY or len(company_key(name)) < 2
-            or any(f"{folded} ".startswith(p) for p in _VAGUE_PREFIXES) or " chua ro" in f" {folded}")
+            or any(padded.startswith(p) for p in _VAGUE_PREFIXES + _PLACE_PREFIXES) or " chua ro" in f" {folded}"
+            or province_of(name)[1] and fold(province_of(name)[1].replace("TP. ", "")) == folded.removeprefix("tp "))
 
 
 def company_key(name: str) -> str:
@@ -510,6 +516,8 @@ def validate_opportunity(item: dict, settings: dict) -> dict:
         published = None  # a date in the future is a misread, not a fact
     if published and (_today() - published).days > settings["lookback_days"] and not (deadline and deadline >= _today()):
         raise Refused(f"tin cũ ({published.isoformat()}, quá {settings['lookback_days']} ngày)")
+    if kind == "tin_hieu" and not published:
+        raise Refused("tín hiệu không rõ ngày (không biết còn mới không)")
     raw_equipment = item.get("equipment") or []
     if isinstance(raw_equipment, str):  # "máy A, máy B" from a sloppy extraction
         raw_equipment = re.split(r"[;,\n]+", raw_equipment)

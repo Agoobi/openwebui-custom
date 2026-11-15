@@ -45,6 +45,11 @@ def opp(**extra):
 # ---------------------------------------------------------------- text helpers
 
 
+def test_real_companies_named_after_places_are_kept():
+    for name in ("Công ty CP Thủy sản Cà Mau", "Công ty Cổ phần Dược Hậu Giang", "Tập đoàn TH"):
+        assert not service.vague_company(name), name
+
+
 def test_fold_and_company_key():
     assert service.fold("Cà Mau – Đồng Tháp") == "ca mau dong thap"
     assert service.company_key("CÔNG TY CỔ PHẦN DƯỢC HẬU GIANG") == service.company_key("Dược Hậu Giang JSC")
@@ -86,6 +91,10 @@ def test_good_tender_is_saved_with_score_and_reasons():
     ({"company": "Không rõ"}, "tên doanh nghiệp"),
     ({"company": "Chưa rõ tên doanh nghiệp"}, "tên doanh nghiệp"),
     ({"company": "Nhà đầu tư nước ngoài (chưa công bố)"}, "tên doanh nghiệp"),
+    ({"company": "Chủ đầu tư dự án khu liên hợp dược phẩm"}, "tên doanh nghiệp"),
+    ({"company": "Khu công nghiệp Phù Mỹ"}, "tên doanh nghiệp"),
+    ({"company": "Cà Mau"}, "tên doanh nghiệp"),
+    ({"kind": "tin_hieu", "published": None, "deadline": None}, "không rõ ngày"),
     ({"industry": "y_te"}, "7 ngành"),
     ({"kind": "khac"}, "không hợp lệ"),
     ({"sources": []}, "link nguồn"),
