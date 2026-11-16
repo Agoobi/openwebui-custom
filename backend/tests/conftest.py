@@ -9,7 +9,7 @@ import tempfile
 from pathlib import Path
 
 HOME = tempfile.mkdtemp()
-os.environ.update(LICH_HOME=HOME, OWUI_DB=os.path.join(HOME, "no-webui.db"), LICH_SERVER_IP="203.0.113.7")
+os.environ.update(LICH_HOME=HOME, LEAD_HOME=os.path.join(HOME, "lead"), OWUI_DB=os.path.join(HOME, "no-webui.db"), LICH_SERVER_IP="203.0.113.7")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import pytest  # noqa: E402

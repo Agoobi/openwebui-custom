@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<!-- Mo rieng (link cu, bookmark, Ctrl+bam): ve Open WebUI de giu sidebar; ?standalone=1 de mo rieng -->
+<script>if (window.top === window && !/[?&]standalone/.test(location.search)) location.replace('/#san-lead');</script>
+<title>Săn lead · Open WebUI</title>
+<link rel="icon" href="/static/favicon.png">
+<link rel="stylesheet" href="/static/cqf/ui.css?v=2">
+<!-- San lead: co hoi B2B (moi thau, du an nha may moi, mo rong, tin hieu) va nguoi ra quyet dinh do agent Hermes
+     (skill san-lead-b2b) tim; sale doi trang thai, ghi chu, xuat CSV. Cai dat + key Apify (quan tri vien).
+     Backend: /api/v1/cqf/lead (cqf_openwebui/lead). -->
+<link rel="stylesheet" href="/static/san-lead/san-lead.css?v=1">
+</head>
+<body>
+<header class="top">
+  <a class="icon-btn" href="/" data-cqf-home title="Về Open WebUI" aria-label="Về Open WebUI">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/></svg>
+  </a>
+  <nav class="crumb" aria-label="Vị trí"><a href="/">Open WebUI</a><span aria-hidden="true">›</span><b>Săn lead</b></nav>
+</header>
+<main id="root" class="shell"></main>
+<script src="/static/cqf/ui.js?v=2"></script>
+<script src="/static/san-lead/san-lead.js?v=2"></script>
+</body>
+</html>
