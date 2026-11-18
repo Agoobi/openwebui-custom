@@ -511,3 +511,25 @@ def test_one_article_is_one_opportunity_even_if_the_province_differs():
     first = service.upsert_opportunities([a])
     second = service.upsert_opportunities([b])
     assert first["created"] and second["merged"] and not second["created"]
+
+
+def test_guessed_equipment_is_only_what_the_seller_sells():
+    service.save_settings(ADMIN, {"seller": {"company": "Đức Dương SCI", "products": "Máy phân tích NIR, máy phân tích đạm, tủ sấy, cân phân tích"}})
+    guess = ["Máy nghiền nguyên liệu", "Máy ép viên", "Máy phân tích NIR", "Máy sấy", "Máy phân tích đạm", "Tủ sấy",
+             "Cân phân tích", "Cân định lượng"]
+    project = opp(kind="du_an_moi", title="Tổ hợp chế biến", deadline=None, equipment=guess, equipment_inferred=True)
+    o = service.get_opportunity(service.upsert_opportunities([project])["created"][0]["id"])
+    assert o["equipment"] == ["Máy phân tích NIR", "Máy phân tích đạm", "Tủ sấy", "Cân phân tích"] and o["equipment_inferred"]
+    stated = opp(title="Gói máy nghiền", equipment=["Máy nghiền nguyên liệu"], equipment_inferred=False,
+                 sources=[{"url": "https://dhgpharma.com.vn/vi/thong-bao/goi-may-nghien"}])
+    s = service.get_opportunity(service.upsert_opportunities([stated])["created"][0]["id"])
+    assert s["equipment"] == ["Máy nghiền nguyên liệu"]  # what the source says is kept as is
+
+
+def test_guess_never_keeps_production_machinery():
+    products = ("Thiết bị phân tích phòng Lab QA/QC. Thiết bị: tủ an toàn sinh học, tủ sấy, máy phân tích NIR "
+                "(thức ăn chăn nuôi, ngũ cốc), máy phân tích đạm, cân phân tích")
+    items = ["Máy trộn thức ăn chăn nuôi", "Dây chuyền chế biến thực phẩm", "Máy phân tích NIR",
+             "Thiết bị kiểm nghiệm vi sinh", "Tủ an toàn sinh học", "Máy ép viên"]
+    assert service._seller_items(items, products) == ["Máy phân tích NIR", "Thiết bị kiểm nghiệm vi sinh",
+                                                      "Tủ an toàn sinh học"]

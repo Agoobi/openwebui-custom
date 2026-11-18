@@ -426,6 +426,31 @@ def save_settings(actor: Actor, patch: dict) -> dict:
 # ---------------------------------------------------------------- scoring
 
 
+_DEVICE_START = ("may ", "tu ", "thiet bi ", "can ", "lo ", "noi ", "kinh ", "pipet", "he thong ", "bo loc", "loc ",
+                 "noi that", "data logger", "dung cu")
+_LAB_WORDS = ("kiem nghiem", "thi nghiem", "phong lab", "vi sinh", "phan tich", "hoa ly", "qa qc")
+_PRODUCTION = ("day chuyen", "may tron", "may nghien", "may ep", "may say", "may dong goi", "can dinh luong", "lo hoi")
+
+
+def _seller_items(equipment: list[str], products: str) -> list[str]:
+    """Guessed items the seller can actually sell: the same device as one in 'Hàng bên bán', or lab / testing
+    equipment; never production machinery. All items when the seller's products are not set."""
+    if not (products or "").strip():
+        return equipment
+    phrases = [fold(p) for p in re.split(r"[,;()\n]|\. ", products)]
+    phrases = [p for p in phrases if p.startswith(_DEVICE_START) and len(p.split()) >= 2]
+
+    def sellable(item: str) -> bool:
+        f = fold(item)
+        if any(x in f for x in _PRODUCTION):
+            return False
+        if any(p in f or f in p for p in phrases):
+            return True
+        return f.startswith(_DEVICE_START) and any(w in f for w in _LAB_WORDS)
+
+    return [item for item in equipment if sellable(item)]
+
+
 def _equipment_matches(equipment: list[str], products: str) -> bool:
     words = {w for w in fold(products).split() if len(w) >= 4}
     if not words:
@@ -703,6 +728,8 @@ def validate_opportunity(item: dict, settings: dict) -> dict:
     if isinstance(raw_equipment, str):  # "máy A, máy B" from a sloppy extraction
         raw_equipment = re.split(r"[;,\n]+", raw_equipment)
     equipment = [e for e in (_clean(x, 120) for x in list(raw_equipment)[:15]) if len(e) >= 3]
+    if item.get("equipment_inferred"):  # a guess: only what the seller sells, at most 5 (not a whole production line)
+        equipment = _seller_items(equipment, (settings.get("seller") or {}).get("products", ""))[:5]
     contact = item.get("contact") or {}
     contact = {k: _clean(contact.get(k), 160) for k in ("name", "phone", "email")} if isinstance(contact, dict) else {}
     if contact:
