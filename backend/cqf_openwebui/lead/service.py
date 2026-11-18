@@ -272,6 +272,79 @@ def delete_key(actor: Actor) -> dict:
     return key_status()
 
 
+# ---------------------------------------------------------------- proxy Viet Nam (tuy chon)
+
+PROXY_CHECK_URL = "https://api.ipify.org"
+
+
+def parse_proxy(value: str) -> str:
+    """host:port:user:pass, host:port or http(s)://user:pass@host:port -> a proxy URL."""
+    text = (value or "").strip()
+    match = re.fullmatch(r"([A-Za-z0-9.-]+):(\d{2,5}):([^:\s]+):(\S+)", text)
+    if match:
+        text = f"http://{match[3]}:{match[4]}@{match[1]}:{match[2]}"
+    elif re.fullmatch(r"[A-Za-z0-9.-]+:\d{2,5}", text):
+        text = "http://" + text
+    if text.startswith("socks"):
+        raise Refused("Hiện chỉ dùng được proxy HTTP / HTTPS.")
+    if not re.fullmatch(r"https?://([^:@\s/]+:[^@\s/]+@)?[A-Za-z0-9.-]+:\d{2,5}/?", text):
+        raise Refused("Proxy có dạng host:port:user:pass hoặc http://user:pass@host:port.")
+    return text.rstrip("/")
+
+
+def proxy_url() -> str:
+    sealed = db.get_kv("proxy")
+    return unseal(sealed) if sealed else ""
+
+
+def proxy_status() -> dict:
+    url = proxy_url()
+    status = db.get_kv("proxy_status", {}) or {}
+    host = urllib.parse.urlsplit(url).hostname if url else ""
+    port = urllib.parse.urlsplit(url).port if url else None
+    return {"set": bool(url), "host": f"{host}:{port}" if url else "",
+            **{k: status.get(k) for k in ("ok", "ip", "checked_at", "error")}}
+
+
+def check_proxy(url: str | None = None) -> dict:
+    """Open a page through the proxy and note the IP the world sees (no password shown)."""
+    url = url or proxy_url()
+    if not url:
+        return {"ok": False, "error": "Chưa có proxy."}
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({"http": url, "https": url}))
+    try:
+        with opener.open(PROXY_CHECK_URL, timeout=config.HTTP_TIMEOUT_SECONDS) as res:
+            ip = res.read(64).decode("ascii", "replace").strip()
+        status = {"ok": bool(re.fullmatch(r"[\d.:a-fA-F]{3,45}", ip)), "ip": ip, "checked_at": now(), "error": ""}
+    except Exception as error:  # noqa: BLE001 - shown to the admin
+        status = {"ok": False, "ip": "", "checked_at": now(), "error": f"Không đi qua được proxy: {str(error)[:150]}"}
+    if url == proxy_url():
+        with db.tx() as conn:
+            db.set_kv(conn, "proxy_status", status)
+    return status
+
+
+def save_proxy(actor: Actor, value: str) -> dict:
+    if not actor.is_admin:
+        raise Refused("Chỉ quản trị viên mới nhập hoặc đổi proxy.", 403)
+    url = parse_proxy(value)
+    status = check_proxy(url)
+    if not status["ok"]:
+        raise Refused(status["error"] or "Proxy không dùng được.")
+    with db.tx() as conn:
+        db.set_kv(conn, "proxy", seal(url))
+        db.set_kv(conn, "proxy_status", status)
+    return proxy_status()
+
+
+def delete_proxy(actor: Actor) -> dict:
+    if not actor.is_admin:
+        raise Refused("Chỉ quản trị viên mới xoá được proxy.", 403)
+    with db.tx() as conn:
+        conn.execute("DELETE FROM kv WHERE key IN ('proxy', 'proxy_status')")
+    return proxy_status()
+
+
 # ---------------------------------------------------------------- settings
 
 
@@ -1188,6 +1261,7 @@ def agent_config() -> dict:
     return {
         "apify_key": apify_key(),
         "apify": key_status(),
+        "proxy": proxy_url(),  # skill: cong .gov.vn chan IP nuoc ngoai doc qua proxy nay
         "month_cost_usd": month_cost(),
         "settings": settings,
         "llm": llm,

@@ -78,6 +78,7 @@ def me(actor: Actor = Depends(people_only)):
         "user": {"id": actor.user_id, "name": actor.name, "is_admin": actor.is_admin},
         "settings": service.get_settings(),
         "apify": service.key_status(),
+        "proxy": service.proxy_status(),
         "month_cost_usd": service.month_cost(),
         "industries": config.INDUSTRIES,
         "industry_short": config.INDUSTRY_SHORT,
@@ -111,6 +112,28 @@ def delete_key(actor: Actor = Depends(people_only)):
 def check_key(actor: Actor = Depends(people_only)):
     service.check_key()
     return service.key_status()
+
+
+class ProxyIn(BaseModel):
+    value: str
+
+
+@router.put("/proxy")
+def put_proxy(body: ProxyIn, actor: Actor = Depends(people_only)):
+    return service.save_proxy(actor, body.value)
+
+
+@router.delete("/proxy")
+def delete_proxy(actor: Actor = Depends(people_only)):
+    return service.delete_proxy(actor)
+
+
+@router.post("/proxy/check")
+def check_proxy(actor: Actor = Depends(people_only)):
+    if not actor.is_admin:
+        raise service.Refused("Chỉ quản trị viên.", 403)
+    service.check_proxy()
+    return service.proxy_status()
 
 
 @router.put("/settings")

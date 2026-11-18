@@ -393,3 +393,40 @@ def test_old_database_gets_the_new_column(tmp_path):
     db._migrate(conn)
     assert "company_contact" in {r[1] for r in conn.execute("PRAGMA table_info(opportunities)")}
     db._migrate(conn)  # twice is fine
+
+
+# ---------------------------------------------------------------- proxy
+
+
+@pytest.mark.parametrize("raw,url", [
+    ("171.253.1.2:21951:user:pa55", "http://user:pa55@171.253.1.2:21951"),
+    ("proxy.vn:8080", "http://proxy.vn:8080"),
+    ("http://u:p@proxy.vn:3128/", "http://u:p@proxy.vn:3128"),
+])
+def test_proxy_formats(raw, url):
+    assert service.parse_proxy(raw) == url
+
+
+def test_bad_proxy_is_refused():
+    for raw in ("", "abc", "socks5://u:p@h:1080", "h:port:u:p"):
+        with pytest.raises(Refused):
+            service.parse_proxy(raw)
+
+
+def test_proxy_is_sealed_checked_and_admin_only(monkeypatch):
+    monkeypatch.setattr(service, "check_proxy", lambda url=None: {"ok": True, "ip": "171.253.1.2", "checked_at": 1, "error": ""})
+    with pytest.raises(Refused):
+        service.save_proxy(SALE, "171.253.1.2:21951:user:pa55")
+    status = service.save_proxy(ADMIN, "171.253.1.2:21951:user:pa55")
+    assert status["set"] and status["host"] == "171.253.1.2:21951" and "pa55" not in str(status)
+    assert "pa55" not in str(db.get_kv("proxy"))  # stored sealed
+    assert service.agent_config()["proxy"] == "http://user:pa55@171.253.1.2:21951"
+    service.delete_proxy(ADMIN)
+    assert not service.proxy_status()["set"]
+
+
+def test_failing_proxy_is_not_saved(monkeypatch):
+    monkeypatch.setattr(service, "check_proxy", lambda url=None: {"ok": False, "error": "Không đi qua được proxy: timeout"})
+    with pytest.raises(Refused, match="proxy"):
+        service.save_proxy(ADMIN, "171.253.1.2:21951:user:pa55")
+    assert not service.proxy_status()["set"]

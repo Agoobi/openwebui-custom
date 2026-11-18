@@ -722,6 +722,51 @@
 		}
 		wrap.append(kc);
 
+		// Proxy Viet Nam: cong .gov.vn chan may chu o nuoc ngoai
+		const [xc, xb] = card('Proxy Việt Nam (tuỳ chọn)', 'Một số cổng .gov.vn (BQL KCN Cần Thơ, Tây Ninh, Đồng Tháp, Vĩnh Long, Lâm Đồng, Cục Quản lý Dược...) chặn máy chủ ở nước ngoài. Agent đọc các cổng này qua proxy Việt Nam; không có proxy thì chỉ đọc được phần Google đã lập chỉ mục. Dạng host:port:user:pass hoặc http://user:pass@host:port.');
+		const px = m.proxy || {};
+		const pstat = el('div', 'wide');
+		if (px.set) {
+			const stat = el('div', 'stat');
+			const add = (label, value) => { const s = el('span', '', `${label}: `); s.append(el('b', '', value)); stat.append(s); };
+			add('Proxy', px.host);
+			if (px.ip) add('IP ra ngoài', px.ip);
+			add('Trạng thái', px.ok ? 'dùng được' : 'lỗi');
+			pstat.append(stat);
+			if (px.error) pstat.append(el('div', 'hint', px.error));
+			else if (px.checked_at) pstat.append(el('div', 'hint', `Kiểm tra lúc ${day(px.checked_at)} ${new Date(px.checked_at * 1000).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}. Mật khẩu proxy được mã hoá, không hiện lại.`));
+		} else {
+			pstat.append(el('div', '', 'Chưa có proxy.'));
+		}
+		xb.append(pstat);
+		if (admin) {
+			const row = el('div', 'keybox wide');
+			const input = el('input', 'input');
+			input.type = 'password';
+			input.autocomplete = 'off';
+			input.placeholder = px.set ? 'Dán proxy mới để thay' : 'host:port:user:pass';
+			input.setAttribute('aria-label', 'Proxy Việt Nam');
+			const saveP = el('button', 'btn primary', px.set ? 'Thay proxy' : 'Lưu proxy');
+			saveP.addEventListener('click', async () => {
+				saveP.disabled = true;
+				try {
+					m.proxy = await api('/proxy', { method: 'PUT', body: { value: input.value.trim() } });
+					toast(`Proxy dùng được (IP ${m.proxy.ip}). Đã lưu (mã hoá).`);
+					render();
+				} catch (e) { fail(e); } finally { saveP.disabled = false; }
+			});
+			row.append(input, saveP);
+			if (px.set) {
+				const check = el('button', 'btn', 'Kiểm tra lại');
+				check.addEventListener('click', async () => { check.disabled = true; try { m.proxy = await api('/proxy/check', { method: 'POST' }); render(); } catch (e) { fail(e); } finally { check.disabled = false; } });
+				const del = el('button', 'btn danger', 'Xoá proxy');
+				del.addEventListener('click', async () => { if (!confirm('Xoá proxy? Agent sẽ không đọc được các cổng chặn IP nước ngoài.')) return; try { m.proxy = await api('/proxy', { method: 'DELETE' }); render(); } catch (e) { fail(e); } });
+				row.append(check, del);
+			}
+			xb.append(row);
+		}
+		wrap.append(xc);
+
 		// Ben ban
 		const [sc, sb] = card('Bên bán', 'Agent dùng để chấm điểm "thiết bị khớp hàng đang bán" và viết gợi ý tiếp cận.');
 		const company = el('input', 'input');
