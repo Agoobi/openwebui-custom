@@ -622,6 +622,28 @@ def stale_reason(opp: dict, settings: dict) -> str:
     return "tin cũ" if age > settings["lookback_days"] else ""
 
 
+_PUBLIC_BODY = re.compile(r"\b(viện|trung tâm|chi cục|cục|sở|trường|đại học|học viện|ban quản lý|ubnd|bệnh viện)\b", re.I)
+_AGENCY_WORDS = re.compile(r"(xúc tiến|ubnd|ủy ban|uỷ ban|sở |ban quản lý|phòng kinh tế|tòa soạn|toà soạn|báo )", re.I)
+
+
+def _agency_contact(contact: dict, company: str) -> bool:
+    """A contact block that belongs to a state agency or a newspaper while the company is a business."""
+    if _PUBLIC_BODY.search(company or ""):
+        return False
+    return bool(str(contact.get("email") or "").endswith(".gov.vn") or _AGENCY_WORDS.search(contact.get("name") or ""))
+
+
+def _same_source(conn, company: str, sources: list[dict]):
+    """The same article already filed for this company (e.g. under another province the model guessed)."""
+    keys = {url_key(s["url"]) for s in sources}
+    for row in conn.execute("SELECT * FROM opportunities").fetchall():
+        if not _same_company_loose(company_key(company), row["dedupe_key"].split("|")[0]):
+            continue
+        if keys & {url_key(s["url"]) for s in db.loads(row["sources"], [])}:
+            return row
+    return None
+
+
 def validate_opportunity(item: dict, settings: dict) -> dict:
     """The cleaned opportunity, or Refused with the reason (shown to the agent)."""
     if not isinstance(item, dict):
@@ -686,6 +708,8 @@ def validate_opportunity(item: dict, settings: dict) -> dict:
     if contact:
         contact["phone"] = ", ".join(p for p in (clean_phone(x) for x in re.split(r"[,;/]| - ", contact["phone"])) if p)
         contact["email"] = clean_email(contact["email"])
+        if _agency_contact(contact, company):  # so / email cua ban xuc tien, so nganh... trong bai bao, khong phai cua DN
+            contact = {"name": "", "phone": "", "email": ""}
     plant_status = item.get("plant_status") if item.get("plant_status") in config.PLANT_STATUS else (
         "du_an_moi" if kind == "du_an_moi" else "dang_chay" if kind == "mo_rong" else "chua_ro")
     found_old = found if found and fold(found) != fold(province.replace("TP. ", "")) else ""
@@ -740,7 +764,8 @@ def upsert_opportunities(items: list, run_id: str | None = None) -> dict:
             continue
         key = _dedupe_key(opp["company"], opp["kind"], opp["province"], opp["title"])
         with db.tx() as conn:
-            row = conn.execute("SELECT * FROM opportunities WHERE dedupe_key=?", (key,)).fetchone() or _similar(conn, key)
+            row = (conn.execute("SELECT * FROM opportunities WHERE dedupe_key=?", (key,)).fetchone() or _similar(conn, key)
+                   or _same_source(conn, opp["company"], opp["sources"]))
             if row is None:
                 opp_id = new_id()
                 people = 0
