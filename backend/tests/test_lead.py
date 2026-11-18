@@ -307,3 +307,145 @@ def test_csv_export_has_bom_and_vietnamese_headers():
 
 def test_every_rule_has_title_and_text():
     assert all(r["title"] and r["text"] for r in config.RULES)
+
+
+# ---------------------------------------------------------------- contact details
+
+
+@pytest.mark.parametrize("raw,clean", [
+    ("0903 123 456", "0903123456"), ("(+84) 292.3841.234", "02923841234"), ("84 903123456", "0903123456"),
+    ("1800 6868", "18006868"), ("1800156801", ""), ("1900 1234 56", "1900123456"), ("028-3822 5050", "02838225050"), ("12345", ""), ("0103456789123", ""), ("", ""),
+])
+def test_phone_numbers_are_normalised_or_dropped(raw, clean):
+    assert service.clean_phone(raw) == clean
+
+
+@pytest.mark.parametrize("raw,clean", [
+    ("Info@DHGPharma.com.vn", "info@dhgpharma.com.vn"), ("mailto:sales@vinhhoan.com", "sales@vinhhoan.com"),
+    ("logo@2x.png", ""), ("name@example.com", ""), ("không có", ""),
+])
+def test_emails_are_checked(raw, clean):
+    assert service.clean_email(raw) == clean
+
+
+def contact(**extra):
+    base = {"website": "https://www.dhgpharma.com.vn", "phones": [{"value": "0292 3891 433", "label": "Tổng đài"}, "12"],
+            "emails": ["dhgpharma@dhgpharma.com.vn", "bad@"], "address": "288 Bis Nguyễn Văn Cừ, Cần Thơ",
+            "tax_code": "1800156801", "linkedin_company": "https://vn.linkedin.com/company/dhg-pharma?trk=x",
+            "sources": [{"url": "https://www.dhgpharma.com.vn/vi/lien-he", "title": "Liên hệ"}]}
+    base.update(extra)
+    return base
+
+
+def test_company_contact_is_cleaned_and_needs_a_source():
+    c = service.validate_company_contact(contact())
+    assert [p["value"] for p in c["phones"]] == ["02923891433"] and c["phones"][0]["label"] == "Tổng đài"
+    assert [e["value"] for e in c["emails"]] == ["dhgpharma@dhgpharma.com.vn"]
+    assert c["linkedin_company"] == "https://www.linkedin.com/company/dhg-pharma"
+    assert c["tax_code"] == "1800156801"
+    with pytest.raises(Refused, match="nguồn"):
+        service.validate_company_contact(contact(sources=[]))
+    assert service.validate_company_contact({"phones": ["abc"], "sources": []})["phones"] == []
+
+
+def test_contact_is_merged_rescored_and_filtered():
+    saved = service.upsert_opportunities([opp(), opp(company="Công ty TNHH Thủy sản Minh Phú", industry="thuy_san",
+                                                   province="Cà Mau", title="Mời chào giá tủ cấy vi sinh")])
+    dhg, mp = saved["created"][0]["id"], saved["created"][1]["id"]
+    before = service.get_opportunity(dhg)["score"]
+    out = service.set_company_contact(dhg, contact())
+    assert out["score"] == before + 10 and any("1 SĐT" in r for r in out["score_reasons"])
+    out = service.set_company_contact(dhg, contact(phones=["0292 3891 434"], emails=[], website="https://other.vn"))
+    cc = out["company_contact"]
+    assert [p["value"] for p in cc["phones"]] == ["02923891433", "02923891434"]
+    assert cc["website"] == "https://www.dhgpharma.com.vn" and cc["checked_at"]
+    assert out["contact_counts"]["phones"] == 2 and out["contact_counts"]["emails"] == 1
+    assert [o["id"] for o in service.list_opportunities({"contact": "co"})["items"]] == [dhg]
+    assert [o["id"] for o in service.list_opportunities({"contact": "chua"})["items"]] == [mp]
+    assert [o["id"] for o in service.list_opportunities({"contact": "can_tim"})["items"]] == [mp]
+    assert service.list_opportunities({"q": "02923891433"})["total"] == 1
+    with pytest.raises(Refused):
+        service.set_company_contact("khong-co", contact())
+
+
+def test_lead_contact_from_source_is_cleaned():
+    saved = service.upsert_opportunities([opp(contact={"name": "Ông Nguyễn Văn A", "phone": "0903.123.456 - 0292 3891 433",
+                                                       "email": "Mua.Hang@dhgpharma.com.vn"})])
+    o = service.get_opportunity(saved["created"][0]["id"])
+    assert o["contact"] == {"name": "Ông Nguyễn Văn A", "phone": "0903123456, 02923891433", "email": "mua.hang@dhgpharma.com.vn"}
+    assert o["contact_counts"]["phones"] == 2 and o["contact_counts"]["emails"] == 1
+
+
+def test_csv_has_contact_columns():
+    saved = service.upsert_opportunities([opp()])
+    service.set_company_contact(saved["created"][0]["id"], contact())
+    text = service.export_csv("opportunities")
+    head, row = text.splitlines()[0], text.splitlines()[1]
+    assert "SĐT doanh nghiệp" in head and "LinkedIn công ty" in head
+    assert "02923891433 (Tổng đài)" in row and "dhgpharma@dhgpharma.com.vn" in row
+
+
+def test_old_database_gets_the_new_column(tmp_path):
+    import sqlite3
+    path = tmp_path / "old.db"
+    conn = sqlite3.connect(path)
+    conn.execute("CREATE TABLE opportunities (id TEXT PRIMARY KEY, contact TEXT NOT NULL DEFAULT '{}')")
+    db._migrate(conn)
+    assert "company_contact" in {r[1] for r in conn.execute("PRAGMA table_info(opportunities)")}
+    db._migrate(conn)  # twice is fine
+
+
+# ---------------------------------------------------------------- proxy
+
+
+@pytest.mark.parametrize("raw,url", [
+    ("171.253.1.2:21951:user:pa55", "http://user:pa55@171.253.1.2:21951"),
+    ("proxy.vn:8080", "http://proxy.vn:8080"),
+    ("http://u:p@proxy.vn:3128/", "http://u:p@proxy.vn:3128"),
+])
+def test_proxy_formats(raw, url):
+    assert service.parse_proxy(raw) == url
+
+
+def test_bad_proxy_is_refused():
+    for raw in ("", "abc", "socks5://u:p@h:1080", "h:port:u:p"):
+        with pytest.raises(Refused):
+            service.parse_proxy(raw)
+
+
+def test_proxy_is_sealed_checked_and_admin_only(monkeypatch):
+    monkeypatch.setattr(service, "check_proxy", lambda url=None: {"ok": True, "ip": "171.253.1.2", "checked_at": 1, "error": ""})
+    with pytest.raises(Refused):
+        service.save_proxy(SALE, "171.253.1.2:21951:user:pa55")
+    status = service.save_proxy(ADMIN, "171.253.1.2:21951:user:pa55")
+    assert status["set"] and status["host"] == "171.253.1.2:21951" and "pa55" not in str(status)
+    assert "pa55" not in str(db.get_kv("proxy"))  # stored sealed
+    assert service.agent_config()["proxy"] == "http://user:pa55@171.253.1.2:21951"
+    service.delete_proxy(ADMIN)
+    assert not service.proxy_status()["set"]
+
+
+def test_failing_proxy_is_not_saved(monkeypatch):
+    monkeypatch.setattr(service, "check_proxy", lambda url=None: {"ok": False, "error": "Không đi qua được proxy: timeout"})
+    with pytest.raises(Refused, match="proxy"):
+        service.save_proxy(ADMIN, "171.253.1.2:21951:user:pa55")
+    assert not service.proxy_status()["set"]
+
+
+@pytest.mark.parametrize("title,note,ok", [
+    ("Kỹ sư bảo trì điện (đang tìm cơ hội mới)", "", False),
+    ("Nhân viên vệ sinh công nghiệp / an toàn", "", False),
+    ("QA Manager", "Đầu mối gián tiếp: từng làm tại VISSAN", False),
+    ("Marketing Intern", "", False),
+    ("International Business Manager", "", True),
+    ("Procurement Manager", "Phụ trách mua sắm", True),
+    ("Trưởng phòng An toàn - Bảo vệ môi trường", "", True),
+])
+def test_people_who_are_not_current_staff_are_refused(title, note, ok):
+    item = {"name": "Nguyễn Văn A", "title": title, "company": "Công ty Cổ phần Dược Hậu Giang",
+            "linkedin_url": "https://vn.linkedin.com/in/nguyen-van-a", "sales_note": note}
+    if ok:
+        assert service.validate_person(item, service.get_settings())["title"] == title
+    else:
+        with pytest.raises(Refused, match="không còn làm"):
+            service.validate_person(item, service.get_settings())

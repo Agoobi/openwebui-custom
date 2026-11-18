@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS opportunities (
     progress TEXT NOT NULL DEFAULT '',
     value_text TEXT NOT NULL DEFAULT '',
     contact TEXT NOT NULL DEFAULT '{}',
+    company_contact TEXT NOT NULL DEFAULT '{}',
     sales_note TEXT NOT NULL DEFAULT '',
     sources TEXT NOT NULL DEFAULT '[]',
     published_at INTEGER,
@@ -97,6 +98,13 @@ CREATE TABLE IF NOT EXISTS runs (
 CREATE INDEX IF NOT EXISTS ix_runs_time ON runs (started_at DESC);
 """
 
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Columns added after the first release (CREATE TABLE IF NOT EXISTS does not add them to an old table)."""
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(opportunities)")}
+    if "company_contact" not in columns:
+        conn.execute("ALTER TABLE opportunities ADD COLUMN company_contact TEXT NOT NULL DEFAULT '{}'")
+
+
 _lock = threading.RLock()
 _conn: sqlite3.Connection | None = None
 
@@ -110,6 +118,7 @@ def connect() -> sqlite3.Connection:
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA busy_timeout=5000")
         conn.executescript(SCHEMA)
+        _migrate(conn)
         for suffix in ("", "-wal", "-shm"):
             path = config.DB_PATH.with_name(config.DB_PATH.name + suffix)
             if path.exists():

@@ -10,7 +10,7 @@
 	const S = {
 		me: null,
 		view: 'co-hoi',
-		opp: { items: [], total: 0, counts: {}, filters: { state: 'moi', industry: '', kind: '', province: '', q: '', sort: 'score' }, limit: PAGE },
+		opp: { items: [], total: 0, counts: {}, filters: { state: 'moi', industry: '', kind: '', province: '', contact: '', q: '', sort: 'score' }, limit: PAGE },
 		people: { items: [], total: 0, filters: { state: '', role_group: '', q: '' }, limit: PAGE },
 		runs: [],
 		draft: null,
@@ -230,6 +230,7 @@
 		bar.append(select([['', 'Mọi loại'], ...Object.entries(m.kinds)], f.kind, (v) => { f.kind = v; refreshOpp(); }, 'Loại cơ hội'));
 		const provs = Object.keys({ ...m.provinces, ...m.other_provinces }).filter((p) => m.settings.provinces.includes(p));
 		bar.append(select([['', 'Mọi tỉnh'], ...provs.map((p) => [p, p])], f.province, (v) => { f.province = v; refreshOpp(); }, 'Tỉnh'));
+		bar.append(select([['', 'Mọi liên hệ'], ['co', 'Có SĐT / email / người'], ['chua', 'Chưa có liên hệ']], f.contact, (v) => { f.contact = v; refreshOpp(); }, 'Liên hệ'));
 		bar.append(select([['score', 'Điểm cao trước'], ['new', 'Mới tìm thấy trước'], ['deadline', 'Hạn chót gần trước']], f.sort, (v) => { f.sort = v; refreshOpp(); }, 'Sắp xếp'));
 		box.append(bar);
 
@@ -294,7 +295,9 @@
 		const place = [o.location, o.province].filter(Boolean).join(', ');
 		if (place) meta.append(el('span', '', place + (o.province_old ? ` (${o.province_old} cũ)` : '')));
 		meta.append(el('span', '', `${o.sources.length} nguồn`));
-		if (o.people_count) meta.append(el('span', '', `${o.people_count} người liên hệ`));
+		const cc = o.contact_counts || {};
+		const reach = [cc.phones ? `${cc.phones} SĐT` : '', cc.emails ? `${cc.emails} email` : '', o.people_count ? `${o.people_count} người liên hệ` : ''].filter(Boolean);
+		meta.append(el('span', reach.length ? 'reach' : 'reach none', reach.length ? reach.join(' · ') : 'chưa có liên hệ'));
 		main.append(meta);
 		row.append(main);
 		const side = el('div', 'side');
@@ -403,12 +406,11 @@
 		}
 		add('Tiến độ', o.progress);
 		add('Giá trị', o.value_text);
-		const c = o.contact || {};
-		add('Đầu mối', [c.name, c.phone, c.email].filter(Boolean).join(' · '));
 		add('Ngày tin', day(o.published_at));
 		add('Agent tìm thấy', `${day(o.first_seen)}${o.last_seen !== o.first_seen ? ` · gặp lại ${day(o.last_seen)}` : ''}`);
 		body.append(kv);
 
+		body.append(contactBlock(o));
 		if (o.summary) { const b = el('div', 'block'); b.append(el('h3', '', 'Tóm tắt'), el('div', '', o.summary)); body.append(b); }
 		if (o.sales_note) { const b = el('div', 'block'); b.append(el('h3', '', 'Gợi ý tiếp cận (AI)'), el('div', 'note-ai', o.sales_note)); body.append(b); }
 
@@ -448,6 +450,42 @@
 		}
 	}
 
+	const fmtPhone = (d) => (/^(1800|1900)/.test(d) ? d.replace(/^(\d{4})(\d+)$/, '$1 $2')
+		: d.length === 11 ? d.replace(/^(\d{4})(\d{3})(\d{4})$/, '$1 $2 $3') : d.replace(/^(\d{4})(\d{3})(\d{3})$/, '$1 $2 $3'));
+	const tel = (d, label) => { const a = el('a', '', fmtPhone(d)); a.href = `tel:${d}`; const w = el('span', 'cv'); w.append(a); if (label) w.append(el('small', '', ` ${label}`)); return w; };
+	const mail = (e, label) => { const a = el('a', '', e); a.href = `mailto:${e}`; const w = el('span', 'cv'); w.append(a); if (label) w.append(el('small', '', ` ${label}`)); return w; };
+
+	function contactBlock(o) {
+		// Lien he: dau moi ghi trong nguon + lien he cong khai cua doanh nghiep (agent tim, moi muc co nguon)
+		const b = el('div', 'block');
+		b.append(el('h3', '', 'Liên hệ'));
+		const lead = o.contact || {};
+		const cc = o.company_contact || {};
+		const kv = el('dl', 'kv');
+		const add = (k, nodes) => { if (!nodes.length) return; kv.append(el('dt', '', k)); const dd = el('dd', 'cvs'); dd.append(...nodes); kv.append(dd); };
+		const leadNodes = [];
+		if (lead.name) leadNodes.push(el('b', '', lead.name));
+		for (const p of String(lead.phone || '').split(',').map((x) => x.trim()).filter(Boolean)) leadNodes.push(/^\d+$/.test(p) ? tel(p) : el('span', 'cv', p));
+		if (lead.email) leadNodes.push(mail(lead.email));
+		add('Đầu mối (theo nguồn)', leadNodes);
+		add('Điện thoại', (cc.phones || []).map((p) => tel(p.value, p.label)));
+		add('Email', (cc.emails || []).map((e) => mail(e.value, e.label)));
+		add('Website', cc.website ? [ext(cc.website, cc.website.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, ''))] : []);
+		add('LinkedIn công ty', cc.linkedin_company ? [ext(cc.linkedin_company, 'Trang công ty')] : []);
+		add('Facebook', cc.facebook ? [ext(cc.facebook, 'Fanpage')] : []);
+		add('Địa chỉ', cc.address ? [el('span', '', cc.address)] : []);
+		add('Mã số thuế', cc.tax_code ? [el('span', '', cc.tax_code + (cc.representative ? ` · đại diện: ${cc.representative}` : ''))] : []);
+		if (kv.children.length) b.append(kv);
+		else b.append(el('div', 'hint', cc.checked_at ? 'Agent đã tìm nhưng chưa thấy SĐT, email công khai. Xem mục Người liên hệ và Nguồn.' : 'Chưa có. Agent tìm website, SĐT, email, LinkedIn của doanh nghiệp ở lần quét tới.'));
+		if ((cc.sources || []).length) {
+			const s = el('div', 'hint');
+			s.append('Nguồn liên hệ: ');
+			cc.sources.forEach((x, i) => { if (i) s.append(' · '); s.append(ext(x.url, x.site || x.url)); });
+			b.append(s);
+		}
+		return b;
+	}
+
 	function personLine(p) {
 		const row = el('div', 'person');
 		const l = el('div');
@@ -457,8 +495,8 @@
 		row.append(l);
 		const r = el('div');
 		if (p.linkedin_url) { const a = ext(p.linkedin_url, 'LinkedIn'); a.className = 'li'; a.prepend(icon(I.link, 13)); r.append(a); }
-		if (p.email) r.append(el('div', 'hint', p.email));
-		if (p.phone) r.append(el('div', 'hint', p.phone));
+		if (p.email) r.append(mail(p.email));
+		if (p.phone) r.append(tel(p.phone));
 		row.append(r);
 		return row;
 	}
@@ -683,6 +721,51 @@
 			kb.append(row);
 		}
 		wrap.append(kc);
+
+		// Proxy Viet Nam: cong .gov.vn chan may chu o nuoc ngoai
+		const [xc, xb] = card('Proxy Việt Nam (tuỳ chọn)', 'Một số cổng .gov.vn (BQL KCN Cần Thơ, Tây Ninh, Đồng Tháp, Vĩnh Long, Lâm Đồng, Cục Quản lý Dược...) chặn máy chủ ở nước ngoài. Agent đọc các cổng này qua proxy Việt Nam; không có proxy thì chỉ đọc được phần Google đã lập chỉ mục. Dạng host:port:user:pass hoặc http://user:pass@host:port.');
+		const px = m.proxy || {};
+		const pstat = el('div', 'wide');
+		if (px.set) {
+			const stat = el('div', 'stat');
+			const add = (label, value) => { const s = el('span', '', `${label}: `); s.append(el('b', '', value)); stat.append(s); };
+			add('Proxy', px.host);
+			if (px.ip) add('IP ra ngoài', px.ip);
+			add('Trạng thái', px.ok ? 'dùng được' : 'lỗi');
+			pstat.append(stat);
+			if (px.error) pstat.append(el('div', 'hint', px.error));
+			else if (px.checked_at) pstat.append(el('div', 'hint', `Kiểm tra lúc ${day(px.checked_at)} ${new Date(px.checked_at * 1000).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}. Mật khẩu proxy được mã hoá, không hiện lại.`));
+		} else {
+			pstat.append(el('div', '', 'Chưa có proxy.'));
+		}
+		xb.append(pstat);
+		if (admin) {
+			const row = el('div', 'keybox wide');
+			const input = el('input', 'input');
+			input.type = 'password';
+			input.autocomplete = 'off';
+			input.placeholder = px.set ? 'Dán proxy mới để thay' : 'host:port:user:pass';
+			input.setAttribute('aria-label', 'Proxy Việt Nam');
+			const saveP = el('button', 'btn primary', px.set ? 'Thay proxy' : 'Lưu proxy');
+			saveP.addEventListener('click', async () => {
+				saveP.disabled = true;
+				try {
+					m.proxy = await api('/proxy', { method: 'PUT', body: { value: input.value.trim() } });
+					toast(`Proxy dùng được (IP ${m.proxy.ip}). Đã lưu (mã hoá).`);
+					render();
+				} catch (e) { fail(e); } finally { saveP.disabled = false; }
+			});
+			row.append(input, saveP);
+			if (px.set) {
+				const check = el('button', 'btn', 'Kiểm tra lại');
+				check.addEventListener('click', async () => { check.disabled = true; try { m.proxy = await api('/proxy/check', { method: 'POST' }); render(); } catch (e) { fail(e); } finally { check.disabled = false; } });
+				const del = el('button', 'btn danger', 'Xoá proxy');
+				del.addEventListener('click', async () => { if (!confirm('Xoá proxy? Agent sẽ không đọc được các cổng chặn IP nước ngoài.')) return; try { m.proxy = await api('/proxy', { method: 'DELETE' }); render(); } catch (e) { fail(e); } });
+				row.append(check, del);
+			}
+			xb.append(row);
+		}
+		wrap.append(xc);
 
 		// Ben ban
 		const [sc, sb] = card('Bên bán', 'Agent dùng để chấm điểm "thiết bị khớp hàng đang bán" và viết gợi ý tiếp cận.');
