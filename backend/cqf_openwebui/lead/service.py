@@ -410,10 +410,13 @@ def score(opp: dict, settings: dict, people_count: int = 0) -> tuple[int, list[s
     elif equipment and not products.strip():
         points += 5
         reasons.append("+5 có hạng mục thiết bị (chưa nhập hàng đang bán để so)")
-    contact = opp.get("contact") or {}
-    if people_count or any(contact.get(k) for k in ("name", "phone", "email")):
+    counts = contact_counts(opp, people_count)
+    lead = opp.get("contact") or {}
+    if people_count or lead.get("name") or counts["phones"] or counts["emails"]:
         points += 10
-        reasons.append("+10 có người / đầu mối liên hệ")
+        reasons.append("+10 có liên hệ (" + ", ".join(
+            x for x in (f"{counts['phones']} SĐT" if counts["phones"] else "", f"{counts['emails']} email" if counts["emails"] else "",
+                        f"{people_count} người" if people_count else "", "đầu mối trong nguồn" if lead.get("name") else "") if x) + ")")
     return min(points, 100), reasons
 
 
@@ -557,6 +560,9 @@ def validate_opportunity(item: dict, settings: dict) -> dict:
     equipment = [e for e in (_clean(x, 120) for x in list(raw_equipment)[:15]) if len(e) >= 3]
     contact = item.get("contact") or {}
     contact = {k: _clean(contact.get(k), 160) for k in ("name", "phone", "email")} if isinstance(contact, dict) else {}
+    if contact:
+        contact["phone"] = ", ".join(p for p in (clean_phone(x) for x in re.split(r"[,;/]| - ", contact["phone"])) if p)
+        contact["email"] = clean_email(contact["email"])
     plant_status = item.get("plant_status") if item.get("plant_status") in config.PLANT_STATUS else (
         "du_an_moi" if kind == "du_an_moi" else "dang_chay" if kind == "mo_rong" else "chua_ro")
     found_old = found if found and fold(found) != fold(province.replace("TP. ", "")) else ""
@@ -584,7 +590,7 @@ def validate_opportunity(item: dict, settings: dict) -> dict:
 
 def _row_opp(row) -> dict:
     out = dict(row)
-    for key, fallback in (("equipment", []), ("contact", {}), ("sources", []), ("score_reasons", [])):
+    for key, fallback in (("equipment", []), ("contact", {}), ("company_contact", {}), ("sources", []), ("score_reasons", [])):
         out[key] = db.loads(out[key], fallback)
     out["equipment_inferred"] = bool(out["equipment_inferred"])
     out["industry_label"] = config.INDUSTRY_SHORT.get(out["industry"], out["industry"])
@@ -708,18 +714,29 @@ def list_opportunities(filters: dict) -> dict:
     rows = [_row_opp(r) for r in db.query(f"SELECT * FROM opportunities{where} ORDER BY {order}", tuple(params))]
     if filters.get("q"):
         rows = [r for r in rows if _matches(r, filters["q"], ("company", "title", "summary", "province", "province_old",
-                                                              "location", "equipment", "sales_note"))]
+                                                              "location", "equipment", "sales_note", "company_contact"))]
     counts = {k: 0 for k in config.STATES}
     for row in db.query("SELECT state, COUNT(*) AS n FROM opportunities GROUP BY state"):
         counts[row["state"]] = row["n"]
     people = {r["opportunity_id"]: r["n"] for r in
               db.query("SELECT opportunity_id, COUNT(*) AS n FROM people WHERE opportunity_id IS NOT NULL GROUP BY opportunity_id")}
+    for row in rows:
+        row["people_count"] = people.get(row["id"], 0)
+        row["contact_counts"] = contact_counts(row, row["people_count"])
+    wanted = filters.get("contact")
+    if wanted in ("co", "chua", "can_tim"):
+        def reachable(r):
+            c = r["contact_counts"]
+            return bool(c["phones"] or c["emails"] or c["people"])
+        if wanted == "can_tim":  # the agent's to-do: no phone / email yet, or never searched
+            rows = [r for r in rows if not (r["contact_counts"]["phones"] or r["contact_counts"]["emails"])
+                    or not r["contact_counts"]["checked"]]
+        else:
+            rows = [r for r in rows if reachable(r) == (wanted == "co")]
     total = len(rows)
     offset = max(0, int(filters.get("offset") or 0))
     limit = max(1, min(int(filters.get("limit") or 100), config.MAX_LIST))
     page = rows[offset:offset + limit]
-    for row in page:
-        row["people_count"] = people.get(row["id"], 0)
     return {"items": page, "total": total, "counts": counts}
 
 
@@ -730,6 +747,7 @@ def get_opportunity(opp_id: str) -> dict:
     out = _row_opp(row)
     out["people"] = [_row_person(r) for r in db.query("SELECT * FROM people WHERE opportunity_id=? ORDER BY first_seen", (opp_id,))]
     out["people_count"] = len(out["people"])
+    out["contact_counts"] = contact_counts(out, out["people_count"])
     return out
 
 
@@ -821,16 +839,14 @@ def validate_person(item: dict, settings: dict) -> dict:
     industry = item.get("industry") if item.get("industry") in config.INDUSTRIES else ""
     location = _clean(item.get("location") or item.get("province"), 200)
     province = province_of(location)[0] if location else ""
-    email = _clean(item.get("email"), 160)
-    if email and not re.fullmatch(r"[^@\s]+@[^@\s]+\.[a-z]{2,}", email, re.I):
-        email = ""
+    email = clean_email(item.get("email"))
     opp_id = item.get("opportunity_id") or None
     if opp_id and db.one("SELECT 1 FROM opportunities WHERE id=?", (opp_id,)) is None:
         raise Refused(f"không thấy cơ hội {opp_id}")
     plant_status = item.get("plant_status") if item.get("plant_status") in config.PLANT_STATUS else "chua_ro"
     return {"name": name, "title": title, "company": company, "industry": industry, "plant_status": plant_status,
             "role_group": role, "province": province, "location": location, "linkedin_url": url, "email": email,
-            "phone": _clean(item.get("phone"), 40), "sales_note": _clean(item.get("sales_note"), 900),
+            "phone": clean_phone(item.get("phone")), "sales_note": _clean(item.get("sales_note"), 900),
             "source": _clean(item.get("source"), 60), "opportunity_id": opp_id}
 
 
@@ -985,6 +1001,125 @@ def month_cost() -> float:
     return round(float(row["c"]), 4)
 
 
+# ---------------------------------------------------------------- contact details
+
+_EMAIL = re.compile(r"[a-z0-9][a-z0-9._%+-]*@[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}", re.I)
+_EMAIL_JUNK = ("example.", "domain.com", "email.com", "yourcompany", "sentry", "wixpress", "noreply", "no-reply",
+               ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg")
+
+
+def clean_phone(value) -> str:
+    """A Vietnamese phone number as digits starting with 0 (or 1800/1900), or "" when it is not one."""
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    digits = re.sub(r"[^\d+]", "", text)
+    if digits.startswith("+84"):
+        digits = "0" + digits[3:]
+    elif digits.startswith("84") and len(digits) in (11, 12):
+        digits = "0" + digits[2:]
+    digits = digits.replace("+", "")
+    if re.fullmatch(r"1800\d{4}|1900\d{4}(\d{2})?", digits):  # 1800 + 6 digits is a tax code (Can Tho), not a phone
+        return digits
+    if re.fullmatch(r"0[2-9]\d{8,9}", digits):
+        return digits
+    return ""
+
+
+def clean_email(value) -> str:
+    text = str(value or "").strip().lower().strip(".,;:()<>[]")
+    if text.startswith("mailto:"):
+        text = text[7:]
+    if not _EMAIL.fullmatch(text) or any(j in text for j in _EMAIL_JUNK):
+        return ""
+    return text
+
+
+def _url(value, pattern: str = r"https?://") -> str:
+    text = _clean(value, 500)
+    return text if re.match(pattern, text, re.I) else ""
+
+
+def _entries(raw, cleaner, limit: int = 6) -> list[dict]:
+    """[{value, label, url}] from strings or dicts; invalid and duplicate values dropped."""
+    out, seen = [], set()
+    for item in raw or []:
+        if isinstance(item, dict):
+            value, label, url = item.get("value"), item.get("label"), item.get("url") or item.get("source")
+        else:
+            value, label, url = item, "", ""
+        value = cleaner(value)
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        out.append({"value": value, "label": _clean(label, 80), "url": _url(url)})
+        if len(out) >= limit:
+            break
+    return out
+
+
+def validate_company_contact(raw: dict) -> dict:
+    """Public business contact details of the company, each traceable to a source page."""
+    if not isinstance(raw, dict):
+        raise Refused("contact phải là object")
+    linkedin = _clean(raw.get("linkedin_company"), 300)
+    match = re.search(r"https?://([a-z]{2,3}\.)?(www\.)?linkedin\.com/company/[^/?#\s]+", linkedin, re.I)
+    tax = re.sub(r"\s", "", _clean(raw.get("tax_code"), 20))
+    out = {
+        "website": _url(raw.get("website")),
+        "phones": _entries(raw.get("phones"), clean_phone),
+        "emails": _entries(raw.get("emails"), clean_email),
+        "address": _clean(raw.get("address"), 300),
+        "tax_code": tax if re.fullmatch(r"\d{10}(-\d{3})?", tax) else "",
+        "representative": _clean(raw.get("representative"), 120),
+        "linkedin_company": re.sub(r"https?://([a-z]{2,3}\.)?(www\.)?linkedin\.com", "https://www.linkedin.com",
+                                   match.group(0), flags=re.I) if match else "",
+        "facebook": _url(raw.get("facebook"), r"https?://([a-z]+\.)?facebook\.com/"),
+        "sources": _sources(raw.get("sources")),
+    }
+    has_value = any(out[k] for k in ("website", "phones", "emails", "address", "tax_code", "linkedin_company", "facebook"))
+    if has_value and not out["sources"]:
+        raise Refused("thông tin liên hệ cần link nguồn (sources[].url)")
+    return out
+
+
+def _merge_contact(old: dict, new: dict) -> dict:
+    out = dict(old or {})
+    for key in ("website", "address", "tax_code", "representative", "linkedin_company", "facebook"):
+        out[key] = (old or {}).get(key) or new.get(key, "")
+    for key in ("phones", "emails"):
+        seen = {e["value"] for e in (old or {}).get(key, [])}
+        out[key] = ((old or {}).get(key, []) + [e for e in new.get(key, []) if e["value"] not in seen])[:8]
+    out["sources"] = _sources((old or {}).get("sources", []) + new.get("sources", []))[:12]
+    out["checked_at"] = now()
+    return out
+
+
+def contact_counts(opp: dict, people_count: int = 0) -> dict:
+    lead = opp.get("contact") or {}
+    company = opp.get("company_contact") or {}
+    phones = {e["value"] for e in company.get("phones", [])} | (
+        {clean_phone(p) for p in str(lead.get("phone") or "").split(",")} - {""})
+    emails = {e["value"] for e in company.get("emails", [])} | ({clean_email(lead.get("email"))} - {""})
+    return {"phones": len(phones), "emails": len(emails), "people": people_count,
+            "website": bool(company.get("website")), "linkedin": bool(company.get("linkedin_company")),
+            "checked": bool(company.get("checked_at"))}
+
+
+def set_company_contact(opp_id: str, raw: dict) -> dict:
+    """The agent's contact search for one opportunity; merged with what is there, then rescored."""
+    contact = validate_company_contact(raw)
+    with db.tx() as conn:
+        row = conn.execute("SELECT company_contact FROM opportunities WHERE id=?", (opp_id,)).fetchone()
+        if row is None:
+            raise Refused("Không thấy cơ hội này.", 404)
+        merged = _merge_contact(db.loads(row["company_contact"], {}), contact)
+        conn.execute("UPDATE opportunities SET company_contact=?, updated_at=? WHERE id=?",
+                     (db.dumps(merged), now(), opp_id))
+        _rescore(conn, opp_id)
+    return get_opportunity(opp_id)
+
+
 # ---------------------------------------------------------------- export
 
 
@@ -994,16 +1129,28 @@ def export_csv(table: str) -> str:
     if table == "opportunities":
         writer.writerow(["Tên doanh nghiệp / Chủ đầu tư", "Ngành", "Loại", "Trạng thái nhà máy", "Tên gói / dự án",
                          "Tỉnh (mới)", "Tỉnh trong nguồn", "Địa điểm (KCN/CCN)", "Hạng mục thiết bị", "Thiết bị là gợi ý",
-                         "Hạn chót", "Tiến độ", "Giá trị", "Đầu mối", "SĐT", "Email", "Tóm tắt", "Gợi ý tiếp cận",
+                         "Hạn chót", "Tiến độ", "Giá trị", "Đầu mối", "SĐT", "Email", "SĐT doanh nghiệp",
+                         "Email doanh nghiệp", "Website", "Địa chỉ", "Mã số thuế", "Người đại diện", "LinkedIn công ty",
+                         "Người liên hệ (LinkedIn)", "Nguồn liên hệ", "Tóm tắt", "Gợi ý tiếp cận",
                          "Điểm", "Trạng thái", "Ghi chú", "Nguồn", "Ngày tin", "Agent tìm thấy"])
+        people_by_opp = {}
+        for p in list_people({"limit": config.MAX_LIST})["items"]:
+            if p.get("opportunity_id"):
+                people_by_opp.setdefault(p["opportunity_id"], []).append(
+                    f"{p['name']} ({p['title']})" + (f" {p['linkedin_url']}" if p["linkedin_url"] else ""))
         for row in list_opportunities({"limit": config.MAX_LIST, "sort": "score"})["items"]:
             contact = row["contact"]
+            cc = row.get("company_contact") or {}
+            cc_extra = ["; ".join(e["value"] + (f" ({e['label']})" if e["label"] else "") for e in cc.get("phones", [])),
+                        "; ".join(e["value"] for e in cc.get("emails", [])), cc.get("website", ""), cc.get("address", ""),
+                        cc.get("tax_code", ""), cc.get("representative", ""), cc.get("linkedin_company", ""),
+                        " | ".join(people_by_opp.get(row["id"], [])), " ".join(s["url"] for s in cc.get("sources", []))]
             writer.writerow([row["company"], row["industry_label"], row["kind_label"],
                              config.PLANT_STATUS.get(row["plant_status"], ""), row["title"], row["province"],
                              row["province_old"], row["location"], "; ".join(row["equipment"]),
                              "có" if row["equipment_inferred"] else "", row["deadline"] or "", row["progress"],
                              row["value_text"], contact.get("name", ""), contact.get("phone", ""), contact.get("email", ""),
-                             row["summary"], row["sales_note"], row["score"], row["state_label"], row["note"],
+                             *cc_extra, row["summary"], row["sales_note"], row["score"], row["state_label"], row["note"],
                              " ".join(s["url"] for s in row["sources"]), _day(row["published_at"]), _day(row["first_seen"])])
     else:
         writer.writerow(["Họ & tên", "Chức danh", "Công ty / Nhà máy", "Ngành", "Trạng thái nhà máy", "Nhóm",

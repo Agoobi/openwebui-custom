@@ -16,6 +16,7 @@ Agent (Hermes on the same machine, skill san-lead-b2b): header X-Lead-Agent-Toke
     GET  /agent/config                    Apify key, settings, LLM, lists
     POST /agent/seen/check {urls}         links not read before      POST /agent/seen {items:[{url, verdict}]}
     POST /agent/opportunities {items, run_id}   POST /agent/people {items, run_id}
+    POST /agent/opportunities/{id}/contact {website, phones, emails, address, tax_code, linkedin_company, sources}
     POST /agent/runs {trigger}            PATCH /agent/runs/{id} {status, stats, cost_usd, message}
 """
 
@@ -207,6 +208,11 @@ def seen_mark(body: ItemsIn, _: Actor = Depends(agent_only)):
 @router.post("/agent/opportunities")
 def agent_opportunities(body: ItemsIn, _: Actor = Depends(agent_only)):
     return service.upsert_opportunities(body.items, body.run_id)
+
+
+@router.post("/agent/opportunities/{opp_id}/contact")
+def agent_contact(opp_id: str, body: dict, _: Actor = Depends(agent_only)):
+    return service.set_company_contact(opp_id, body)
 
 
 @router.post("/agent/people")

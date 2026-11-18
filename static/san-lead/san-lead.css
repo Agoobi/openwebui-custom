@@ -110,3 +110,10 @@ table.runs td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .rule { border: 1px solid var(--line); border-radius: var(--r-lg); padding: 14px 16px; background: var(--surface); }
 .rule h3 { margin: 0 0 4px; font-size: 14px; }
 .rule p { margin: 0; font-size: 13px; color: var(--ink-2); }
+
+/* Lien he */
+.row .meta .reach { color: var(--ok); font-weight: 600; }
+.row .meta .reach.none { color: var(--warn); font-weight: 500; }
+.cvs { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline; }
+.cv small { color: var(--ink-3); }
+.cv a { font-variant-numeric: tabular-nums; }
