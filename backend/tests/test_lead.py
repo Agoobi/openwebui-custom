@@ -524,3 +524,12 @@ def test_guessed_equipment_is_only_what_the_seller_sells():
                  sources=[{"url": "https://dhgpharma.com.vn/vi/thong-bao/goi-may-nghien"}])
     s = service.get_opportunity(service.upsert_opportunities([stated])["created"][0]["id"])
     assert s["equipment"] == ["Máy nghiền nguyên liệu"]  # what the source says is kept as is
+
+
+def test_guess_never_keeps_production_machinery():
+    products = ("Thiết bị phân tích phòng Lab QA/QC. Thiết bị: tủ an toàn sinh học, tủ sấy, máy phân tích NIR "
+                "(thức ăn chăn nuôi, ngũ cốc), máy phân tích đạm, cân phân tích")
+    items = ["Máy trộn thức ăn chăn nuôi", "Dây chuyền chế biến thực phẩm", "Máy phân tích NIR",
+             "Thiết bị kiểm nghiệm vi sinh", "Tủ an toàn sinh học", "Máy ép viên"]
+    assert service._seller_items(items, products) == ["Máy phân tích NIR", "Thiết bị kiểm nghiệm vi sinh",
+                                                      "Tủ an toàn sinh học"]
