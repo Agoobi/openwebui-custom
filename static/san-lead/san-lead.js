@@ -410,7 +410,10 @@
 		add('Trạng thái nhà máy', S.me.plant_status[o.plant_status]);
 		add('Tên gói / dự án', o.title);
 		add('Địa điểm', [o.location, o.province].filter(Boolean).join(', ') + (o.province_old ? ` (tỉnh cũ: ${o.province_old})` : ''));
-		if (o.equipment.length) add('Hạng mục thiết bị', o.equipment.join('; ') + (o.equipment_inferred ? ' (agent gợi ý)' : ''));
+		if (o.equipment.length) {
+			if (o.equipment_inferred) add('Thiết bị gợi ý (AI đoán, nguồn không ghi)', o.equipment.join('; '));
+			else add('Hạng mục thiết bị (theo nguồn)', o.equipment.join('; '));
+		}
 		if (o.deadline) {
 			const left = daysLeft(o.deadline);
 			add('Hạn chót hồ sơ', `${vnDate(o.deadline)}${left != null ? (left < 0 ? ' · đã hết hạn' : ` · còn ${left} ngày`) : ''}`);

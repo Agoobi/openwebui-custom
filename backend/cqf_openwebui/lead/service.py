@@ -426,6 +426,14 @@ def save_settings(actor: Actor, patch: dict) -> dict:
 # ---------------------------------------------------------------- scoring
 
 
+def _seller_items(equipment: list[str], products: str) -> list[str]:
+    """Items that match what the seller sells (same rule as the score); all of them when products are not set."""
+    if not (products or "").strip():
+        return equipment
+    folded = fold(products)
+    return [item for item in equipment if fold(item) in folded or _equipment_matches([item], products)]
+
+
 def _equipment_matches(equipment: list[str], products: str) -> bool:
     words = {w for w in fold(products).split() if len(w) >= 4}
     if not words:
@@ -703,6 +711,8 @@ def validate_opportunity(item: dict, settings: dict) -> dict:
     if isinstance(raw_equipment, str):  # "máy A, máy B" from a sloppy extraction
         raw_equipment = re.split(r"[;,\n]+", raw_equipment)
     equipment = [e for e in (_clean(x, 120) for x in list(raw_equipment)[:15]) if len(e) >= 3]
+    if item.get("equipment_inferred"):  # a guess: only what the seller sells, at most 5 (not a whole production line)
+        equipment = _seller_items(equipment, (settings.get("seller") or {}).get("products", ""))[:5]
     contact = item.get("contact") or {}
     contact = {k: _clean(contact.get(k), 160) for k in ("name", "phone", "email")} if isinstance(contact, dict) else {}
     if contact:
