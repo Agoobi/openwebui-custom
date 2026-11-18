@@ -533,3 +533,12 @@ def test_guess_never_keeps_production_machinery():
              "Thiết bị kiểm nghiệm vi sinh", "Tủ an toàn sinh học", "Máy ép viên"]
     assert service._seller_items(items, products) == ["Máy phân tích NIR", "Thiết bị kiểm nghiệm vi sinh",
                                                       "Tủ an toàn sinh học"]
+
+
+@pytest.mark.parametrize("name,vague", [
+    ("Seafood", True), ("SEAFOOD INDUSTRY", True), ("Food Company Vietnam", True),
+    ("Minh Phu Seafood Corporation", False), ("Bien Dong Seafood", False), ("Nutifood Việt Nam", False),
+    ("Công ty CP Tập đoàn Thủy sản Minh Phú", False),
+])
+def test_company_made_of_industry_words_only_is_vague(name, vague):
+    assert bool(service.vague_company(name)) == vague
