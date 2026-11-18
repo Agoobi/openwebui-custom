@@ -449,3 +449,42 @@ def test_people_who_are_not_current_staff_are_refused(title, note, ok):
     else:
         with pytest.raises(Refused, match="không còn làm"):
             service.validate_person(item, service.get_settings())
+
+
+# ---------------------------------------------------------------- freshness
+
+
+def test_tender_without_deadline_must_be_recent_and_dated():
+    ok = service.upsert_opportunities([opp(deadline=None, published="2026-11-10")])
+    assert ok["created"]
+    for extra, reason in (({"deadline": None, "published": "2026-10-20"}, "quá 14 ngày"),
+                          ({"deadline": None, "published": None}, "không rõ ngày")):
+        out = service.upsert_opportunities([opp(title="Gói khác " + reason, **extra)])
+        assert not out["created"] and reason in out["rejected"][0]["reason"]
+
+
+def test_month_in_file_link_dates_an_old_tender():
+    item = opp(deadline=None, published=None,
+               sources=[{"url": "https://dhgpharma.com.vn/sites/default/files/2025-09/TMCG-may.pdf"}])
+    out = service.upsert_opportunities([item])
+    assert "tin cũ (2025-09-30" in out["rejected"][0]["reason"]
+
+
+def test_old_event_in_a_new_article_is_refused():
+    project = opp(kind="mo_rong", title="Mở rộng nhà máy", deadline=None, published="2026-11-10")
+    out = service.upsert_opportunities([{**project, "event_date": "2026-03"}])
+    assert "việc đã diễn ra từ 2026-03-31" in out["rejected"][0]["reason"]
+    assert service.upsert_opportunities([{**project, "event_date": "2026-12"}])["created"]  # a plan, not old news
+
+
+def test_stale_items_are_hidden_but_kept(monkeypatch):
+    saved = service.upsert_opportunities([opp(), opp(kind="du_an_moi", title="Nhà máy mới", deadline=None,
+                                                    published="2026-11-01")])
+    tender, project = saved["created"][0]["id"], saved["created"][1]["id"]
+    later = 1794787200 + 30 * 86400  # 16/12/2026: tender deadline 25/11 passed, project news is 45 days old
+    monkeypatch.setattr(service, "now", lambda: later)
+    monkeypatch.setattr(service, "_today", lambda: service.date(2026, 12, 16))
+    data = service.list_opportunities({"fresh": "1"})
+    assert data["items"] == [] and data["stale"] == 2
+    old = {o["id"]: o["stale"] for o in service.list_opportunities({"fresh": "0"})["items"]}
+    assert old == {tender: "hết hạn", project: "tin cũ"}

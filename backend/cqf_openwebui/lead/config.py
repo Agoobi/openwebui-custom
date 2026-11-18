@@ -160,6 +160,9 @@ REGION_DEFAULT = list(PROVINCES)
 
 # ---------------------------------------------------------------- settings
 
+# A tender with no deadline is only worth a call while it is this fresh (days since it was posted).
+TENDER_NO_DEADLINE_DAYS = 14
+
 DEFAULT_SETTINGS = {
     "seller": {
         "company": "",
@@ -184,7 +187,7 @@ DEFAULT_SETTINGS = {
     "min_score_for_people": 55,
     "max_usd_per_run": 0.6,
     "max_usd_per_month": 4.5,  # stop before the Apify plan's monthly limit
-    "lookback_days": 45,
+    "lookback_days": 30,
     "llm_model": "",  # empty = the model Hermes uses
 }
 

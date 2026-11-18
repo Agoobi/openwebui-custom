@@ -10,7 +10,7 @@
 	const S = {
 		me: null,
 		view: 'co-hoi',
-		opp: { items: [], total: 0, counts: {}, filters: { state: 'moi', industry: '', kind: '', province: '', contact: '', q: '', sort: 'score' }, limit: PAGE },
+		opp: { items: [], total: 0, counts: {}, filters: { state: 'moi', industry: '', kind: '', province: '', contact: '', fresh: '1', q: '', sort: 'score' }, limit: PAGE },
 		people: { items: [], total: 0, filters: { state: '', role_group: '', q: '' }, limit: PAGE },
 		runs: [],
 		draft: null,
@@ -230,6 +230,7 @@
 		bar.append(select([['', 'Mọi loại'], ...Object.entries(m.kinds)], f.kind, (v) => { f.kind = v; refreshOpp(); }, 'Loại cơ hội'));
 		const provs = Object.keys({ ...m.provinces, ...m.other_provinces }).filter((p) => m.settings.provinces.includes(p));
 		bar.append(select([['', 'Mọi tỉnh'], ...provs.map((p) => [p, p])], f.province, (v) => { f.province = v; refreshOpp(); }, 'Tỉnh'));
+		bar.append(select([['1', 'Còn hạn, tin mới'], ['', 'Cả tin cũ'], ['0', 'Chỉ tin cũ / hết hạn']], f.fresh, (v) => { f.fresh = v; refreshOpp(); }, 'Độ mới'));
 		bar.append(select([['', 'Mọi liên hệ'], ['co', 'Có SĐT / email / người'], ['chua', 'Chưa có liên hệ']], f.contact, (v) => { f.contact = v; refreshOpp(); }, 'Liên hệ'));
 		bar.append(select([['score', 'Điểm cao trước'], ['new', 'Mới tìm thấy trước'], ['deadline', 'Hạn chót gần trước']], f.sort, (v) => { f.sort = v; refreshOpp(); }, 'Sắp xếp'));
 		box.append(bar);
@@ -254,9 +255,18 @@
 
 	function paintOpp(list) {
 		list.replaceChildren();
+		if (S.opp.filters.fresh === '1' && S.opp.stale) {
+			const h = el('div', 'hint stale-note');
+			h.append(`Đang ẩn ${S.opp.stale} cơ hội đã hết hạn hoặc tin cũ hơn ${S.me.settings.lookback_days} ngày (mời thầu không ghi hạn: quá 14 ngày). `);
+			const a = el('a', '', 'Xem');
+			a.href = '#';
+			a.addEventListener('click', (e) => { e.preventDefault(); S.opp.filters.fresh = '0'; refreshOpp(); });
+			h.append(a);
+			list.append(h);
+		}
 		if (!S.opp.items.length) {
 			const e = el('div', 'empty');
-			const filtered = S.opp.filters.q || S.opp.filters.industry || S.opp.filters.kind || S.opp.filters.province;
+			const filtered = S.opp.filters.q || S.opp.filters.industry || S.opp.filters.kind || S.opp.filters.province || S.opp.filters.contact;
 			e.append(el('h2', '', filtered ? 'Không có cơ hội khớp bộ lọc' : 'Chưa có cơ hội ở mục này'));
 			e.append(el('p', '', filtered ? 'Bỏ bớt bộ lọc hoặc đổi từ khoá.' : 'Agent ghi cơ hội vào đây sau mỗi lần quét. Muốn quét ngay: mở chat với Hermes và nhắn "quét lead".'));
 			list.append(e);
@@ -303,6 +313,7 @@
 		const side = el('div', 'side');
 		const left = daysLeft(o.deadline);
 		if (left != null) side.append(chip(left < 0 ? 'Hết hạn' : left === 0 ? 'Hạn hôm nay' : `Còn ${left} ngày`, left <= 3 ? 'c-bad' : left <= 10 ? 'c-warn' : 'c-ok'));
+		if (o.stale) side.append(chip(o.stale === 'hết hạn' ? 'Hết hạn' : o.stale === 'tin cũ' ? 'Tin cũ' : 'Không rõ ngày', 'c-muted'));
 		if (o.state !== 'moi') side.append(chip(o.state_label, o.state === 'bo_qua' ? 'c-muted' : 'c-acc'));
 		side.append(el('span', '', o.published_at ? `Tin ${day(o.published_at)}` : `Thấy ${ago(o.first_seen)}`));
 		row.append(side);

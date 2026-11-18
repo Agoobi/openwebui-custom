@@ -582,6 +582,46 @@ def _sources(raw) -> list[dict]:
     return out
 
 
+def _url_month(url: str) -> date | None:
+    """A month written in a file link (.../files/2025-09/thu-moi.pdf): the last day of it, or None."""
+    match = re.search(r"/(20\d\d)[/-](0[1-9]|1[0-2])/", url or "")
+    if not match:
+        return None
+    year, month = int(match[1]), int(match[2])
+    nxt = date(year + (month == 12), month % 12 + 1, 1)
+    return nxt - timedelta(days=1)
+
+
+def _parse_event(value) -> date | None:
+    """Day (or month: its last day) of the event the news is about; future dates are plans, not old news."""
+    text = str(value or "").strip()
+    day = _parse_day(text)
+    if not day:
+        match = re.fullmatch(r"(20\d\d)-(0?[1-9]|1[0-2])", text) or re.fullmatch(r"(0?[1-9]|1[0-2])/(20\d\d)", text)
+        if match:
+            year, month = (int(match[1]), int(match[2])) if len(match[1]) == 4 else (int(match[2]), int(match[1]))
+            day = date(year + (month == 12), month % 12 + 1, 1) - timedelta(days=1)
+    if day and day > _today():
+        return None
+    return day
+
+
+def stale_reason(opp: dict, settings: dict) -> str:
+    """Why a saved opportunity is no longer fresh ("" when it still is): expired tender, old news."""
+    deadline = _parse_day(opp.get("deadline"))
+    published = datetime.fromtimestamp(opp["published_at"], timezone.utc).date() if opp.get("published_at") else None
+    age = (_today() - published).days if published else None
+    if opp["kind"] == "moi_thau":
+        if deadline:
+            return "hết hạn" if deadline < _today() else ""
+        if age is None:
+            return "không rõ ngày"
+        return "tin cũ" if age > config.TENDER_NO_DEADLINE_DAYS else ""
+    if age is None:
+        return "không rõ ngày"
+    return "tin cũ" if age > settings["lookback_days"] else ""
+
+
 def validate_opportunity(item: dict, settings: dict) -> dict:
     """The cleaned opportunity, or Refused with the reason (shown to the agent)."""
     if not isinstance(item, dict):
@@ -623,8 +663,18 @@ def validate_opportunity(item: dict, settings: dict) -> dict:
         (_parse_day(s["published"]) for s in sources if s["published"]), None)
     if published and published > _today() + timedelta(days=1):
         published = None  # a date in the future is a misread, not a fact
+    if not published:
+        published = next((d for d in (_url_month(s["url"]) for s in sources) if d), None)  # /2025-09/ in a file link
     if published and (_today() - published).days > settings["lookback_days"] and not (deadline and deadline >= _today()):
         raise Refused(f"tin cũ ({published.isoformat()}, quá {settings['lookback_days']} ngày)")
+    if kind == "moi_thau" and not deadline:
+        if not published:
+            raise Refused("mời thầu không rõ hạn chót và không rõ ngày đăng (không biết còn mở không)")
+        if (_today() - published).days > config.TENDER_NO_DEADLINE_DAYS:
+            raise Refused(f"mời thầu không rõ hạn chót, đăng {published.isoformat()} (quá {config.TENDER_NO_DEADLINE_DAYS} ngày)")
+    event = _parse_event(item.get("event_date"))
+    if event and kind != "moi_thau" and (_today() - event).days > settings["lookback_days"]:
+        raise Refused(f"việc đã diễn ra từ {event.isoformat()} (bài mới nhưng sự kiện quá {settings['lookback_days']} ngày)")
     if kind == "tin_hieu" and not published:
         raise Refused("tín hiệu không rõ ngày (không biết còn mới không)")
     raw_equipment = item.get("equipment") or []
@@ -793,9 +843,16 @@ def list_opportunities(filters: dict) -> dict:
         counts[row["state"]] = row["n"]
     people = {r["opportunity_id"]: r["n"] for r in
               db.query("SELECT opportunity_id, COUNT(*) AS n FROM people WHERE opportunity_id IS NOT NULL GROUP BY opportunity_id")}
+    settings = get_settings()
     for row in rows:
         row["people_count"] = people.get(row["id"], 0)
         row["contact_counts"] = contact_counts(row, row["people_count"])
+        row["stale"] = stale_reason(row, settings)
+    stale_count = sum(1 for r in rows if r["stale"])
+    if filters.get("fresh") == "1":
+        rows = [r for r in rows if not r["stale"]]
+    elif filters.get("fresh") == "0":
+        rows = [r for r in rows if r["stale"]]
     wanted = filters.get("contact")
     if wanted in ("co", "chua", "can_tim"):
         def reachable(r):
@@ -810,7 +867,7 @@ def list_opportunities(filters: dict) -> dict:
     offset = max(0, int(filters.get("offset") or 0))
     limit = max(1, min(int(filters.get("limit") or 100), config.MAX_LIST))
     page = rows[offset:offset + limit]
-    return {"items": page, "total": total, "counts": counts}
+    return {"items": page, "total": total, "counts": counts, "stale": stale_count}
 
 
 def get_opportunity(opp_id: str) -> dict:
@@ -821,6 +878,7 @@ def get_opportunity(opp_id: str) -> dict:
     out["people"] = [_row_person(r) for r in db.query("SELECT * FROM people WHERE opportunity_id=? ORDER BY first_seen", (opp_id,))]
     out["people_count"] = len(out["people"])
     out["contact_counts"] = contact_counts(out, out["people_count"])
+    out["stale"] = stale_reason(out, get_settings())
     return out
 
 

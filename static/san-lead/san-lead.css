@@ -117,3 +117,4 @@ table.runs td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .cvs { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline; }
 .cv small { color: var(--ink-3); }
 .cv a { font-variant-numeric: tabular-nums; }
+.stale-note { padding: 8px 14px; border-bottom: 1px solid var(--line); }
