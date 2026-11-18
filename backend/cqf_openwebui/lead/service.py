@@ -127,8 +127,21 @@ def _only_descriptors(name: str) -> bool:
     return all(w in _GENERIC_WORDS or w in {"nha", "dau", "tu", "doanh", "nghiep", "nhom"} for w in rest)
 
 
+# A company "name" made only of industry words: 'Seafood', 'SEAFOOD INDUSTRY', 'Food Company Vietnam'.
+_INDUSTRY_ONLY = set("""seafood seafoods food foods industry industries aquaculture pharma pharmaceutical pharmaceuticals
+feed feeds company co ltd limited corp corporation group vietnam viet nam factory plant manufacturing international
+trading import export jsc inc the and of thuy san thuc pham duoc pham cong nghiep nha may""".split())
+
+
+def _industry_words_only(name: str) -> bool:
+    words = fold(name).split()
+    return bool(words) and all(w in _INDUSTRY_ONLY for w in words)
+
+
 def vague_company(name: str) -> bool:
     """'Chưa rõ tên doanh nghiệp', 'Chủ đầu tư dự án...', 'Khu công nghiệp Phù Mỹ', 'Cà Mau'... are not a company to call."""
+    if _industry_words_only(name):
+        return True
     folded = fold(name)
     padded = f"{folded} "
     return (folded in _VAGUE_COMPANY or len(company_key(name)) < 2 or _only_descriptors(name)
