@@ -449,3 +449,65 @@ def test_people_who_are_not_current_staff_are_refused(title, note, ok):
     else:
         with pytest.raises(Refused, match="không còn làm"):
             service.validate_person(item, service.get_settings())
+
+
+# ---------------------------------------------------------------- freshness
+
+
+def test_tender_without_deadline_must_be_recent_and_dated():
+    ok = service.upsert_opportunities([opp(deadline=None, published="2026-11-10")])
+    assert ok["created"]
+    for extra, reason in (({"deadline": None, "published": "2026-10-20"}, "quá 14 ngày"),
+                          ({"deadline": None, "published": None}, "không rõ ngày")):
+        out = service.upsert_opportunities([opp(title="Gói khác " + reason, **extra)])
+        assert not out["created"] and reason in out["rejected"][0]["reason"]
+
+
+def test_month_in_file_link_dates_an_old_tender():
+    item = opp(deadline=None, published=None,
+               sources=[{"url": "https://dhgpharma.com.vn/sites/default/files/2025-09/TMCG-may.pdf"}])
+    out = service.upsert_opportunities([item])
+    assert "tin cũ (2025-09-30" in out["rejected"][0]["reason"]
+
+
+def test_old_event_in_a_new_article_is_refused():
+    project = opp(kind="mo_rong", title="Mở rộng nhà máy", deadline=None, published="2026-11-10")
+    out = service.upsert_opportunities([{**project, "event_date": "2026-03"}])
+    assert "việc đã diễn ra từ 2026-03-31" in out["rejected"][0]["reason"]
+    assert service.upsert_opportunities([{**project, "event_date": "2026-12"}])["created"]  # a plan, not old news
+
+
+def test_stale_items_are_hidden_but_kept(monkeypatch):
+    saved = service.upsert_opportunities([opp(), opp(kind="du_an_moi", title="Nhà máy mới", deadline=None,
+                                                    published="2026-11-01",
+                                                    sources=[{"url": "https://baocantho.com.vn/nha-may-moi-dhg"}])])
+    tender, project = saved["created"][0]["id"], saved["created"][1]["id"]
+    later = 1794787200 + 30 * 86400  # 16/12/2026: tender deadline 25/11 passed, project news is 45 days old
+    monkeypatch.setattr(service, "now", lambda: later)
+    monkeypatch.setattr(service, "_today", lambda: service.date(2026, 12, 16))
+    data = service.list_opportunities({"fresh": "1"})
+    assert data["items"] == [] and data["stale"] == 2
+    old = {o["id"]: o["stale"] for o in service.list_opportunities({"fresh": "0"})["items"]}
+    assert old == {tender: "hết hạn", project: "tin cũ"}
+
+
+def test_agency_contact_in_an_article_is_not_the_company_contact():
+    project = opp(kind="du_an_moi", title="Tổ hợp chế biến", deadline=None, published="2026-11-15", province="Đắk Lắk",
+                  company="Công ty Cổ phần Đầu tư Nông lâm Nhật Nhật An", industry="cam_hoa_chat",
+                  contact={"name": "Trung tâm Xúc tiến đầu tư", "phone": "0262 3778 788", "email": "ttxtdt@khdt.daklak.gov.vn"})
+    o = service.get_opportunity(service.upsert_opportunities([project])["created"][0]["id"])
+    assert o["contact"] == {"name": "", "phone": "", "email": ""}
+    tender = opp(company="Viện Kiểm nghiệm thuốc TP.HCM", contact={"name": "Phòng Vật tư", "phone": "028 3855 1234",
+                                                                    "email": "vattu@ivdc.gov.vn"})
+    t = service.get_opportunity(service.upsert_opportunities([tender])["created"][0]["id"])
+    assert t["contact"]["email"] == "vattu@ivdc.gov.vn"  # a public body's own procurement contact is kept
+
+
+def test_one_article_is_one_opportunity_even_if_the_province_differs():
+    src = [{"url": "https://moneyf.vn/thuy-san-minh-phu-mo-rong-san-xuat", "published": "2026-11-08"}]
+    a = opp(company="Công ty CP Tập đoàn Thủy sản Minh Phú", industry="thuy_san", kind="mo_rong", deadline=None,
+            title="Mở rộng sản xuất", province="Cà Mau", published="2026-11-08", sources=src)
+    b = {**a, "province": "Khánh Hòa", "title": "Mở rộng nhà máy Minh Phú Khánh An"}
+    first = service.upsert_opportunities([a])
+    second = service.upsert_opportunities([b])
+    assert first["created"] and second["merged"] and not second["created"]
