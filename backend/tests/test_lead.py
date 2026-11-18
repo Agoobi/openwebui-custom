@@ -430,3 +430,22 @@ def test_failing_proxy_is_not_saved(monkeypatch):
     with pytest.raises(Refused, match="proxy"):
         service.save_proxy(ADMIN, "171.253.1.2:21951:user:pa55")
     assert not service.proxy_status()["set"]
+
+
+@pytest.mark.parametrize("title,note,ok", [
+    ("Kỹ sư bảo trì điện (đang tìm cơ hội mới)", "", False),
+    ("Nhân viên vệ sinh công nghiệp / an toàn", "", False),
+    ("QA Manager", "Đầu mối gián tiếp: từng làm tại VISSAN", False),
+    ("Marketing Intern", "", False),
+    ("International Business Manager", "", True),
+    ("Procurement Manager", "Phụ trách mua sắm", True),
+    ("Trưởng phòng An toàn - Bảo vệ môi trường", "", True),
+])
+def test_people_who_are_not_current_staff_are_refused(title, note, ok):
+    item = {"name": "Nguyễn Văn A", "title": title, "company": "Công ty Cổ phần Dược Hậu Giang",
+            "linkedin_url": "https://vn.linkedin.com/in/nguyen-van-a", "sales_note": note}
+    if ok:
+        assert service.validate_person(item, service.get_settings())["title"] == title
+    else:
+        with pytest.raises(Refused, match="không còn làm"):
+            service.validate_person(item, service.get_settings())

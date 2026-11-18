@@ -864,6 +864,10 @@ def delete_item(actor: Actor, table: str, item_id: str) -> None:
 
 # ---------------------------------------------------------------- people
 
+# Not a current decision maker: job seekers, interns, former staff, cleaning / security / line workers.
+_NOT_STAFF = re.compile(r"đang tìm|tìm việc|open to work|seeking|looking for|thực tập|\bintern\b|internship|sinh viên|"
+                        r"\bstudent\b|nhân viên vệ sinh|tạp vụ|nhân viên bảo vệ|security guard|công nhân|\bformer\b|"
+                        r"\bex-|cựu nhân viên|từng làm|freelance", re.I)
 _LINKEDIN_PROFILE = re.compile(r"https?://([a-z]{2,3}\.)?(www\.)?linkedin\.com/in/[^/?#\s]+", re.I)
 _ROLE_WORDS = {
     "mua_sam": ("procurement", "purchasing", "purchase", "sourcing", "supply chain", "buyer", "mua hang", "mua sam",
@@ -906,6 +910,9 @@ def validate_person(item: dict, settings: dict) -> dict:
     title = _clean(item.get("title"), 200)
     if not title:
         raise Refused("thiếu chức danh")
+    said = f"{title} {item.get('sales_note') or ''}".lower()
+    if _NOT_STAFF.search(said):
+        raise Refused("không còn làm / không có vai trò ở công ty (tìm việc, thực tập, cựu nhân viên, lao động phổ thông)")
     role = item.get("role_group") if item.get("role_group") in config.ROLE_GROUPS else "khac"
     if role == "khac":
         role = role_of(title)
